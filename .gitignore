@@ -1,0 +1,26 @@
+# Ignore WAV audio files (they are large and numerous)
+*.WAV
+*.wav
+
+# Ignore zip files
+*.zip
+
+# Python files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment
+.env
+.venv
+env/
+venv/
+ENV/
+
+# System / IDE
+.DS_Store
+.vscode/
+.idea/
+
+# Local model checkpoint or graphs
+*.png
