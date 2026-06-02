@@ -1,0 +1,10 @@
+h## Datasets
+
+- **DARPA TIMIT Acoustic-Phonetic Continuous Speech Corpus**
+  - https://www.kaggle.com/datasets/mfekadu/darpa-timit-acousticphonetic-continuous-speech
+
+- **Arabic Speech Corpus**
+  - https://en.arabicspeechcorpus.com/arabic-speech-corpus.zip
+
+- **ASVspoof 2021 Dataset**
+  - https://www.asvspoof.org/index2021.html
