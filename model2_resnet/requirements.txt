@@ -1,0 +1,49 @@
+# ============================================================
+# ResNet++ Audio Forgery Detection — Python Dependencies
+# ============================================================
+# Install with:
+#   pip install -r requirements.txt
+#
+# For Apple Silicon (MPS):
+#   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+#
+# For CUDA 12.x:
+#   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+# ============================================================
+
+# ── Core Deep Learning
+torch>=2.2.0
+torchvision>=0.17.0
+torchaudio>=2.2.0
+
+# ── HuggingFace Datasets
+datasets>=2.18.0
+huggingface-hub>=0.22.0
+
+# ── Audio Processing
+librosa>=0.10.1
+soundfile>=0.12.1
+
+# ── Scientific Computing
+numpy>=1.24.0
+scipy>=1.11.0
+
+# ── Machine Learning / Metrics
+scikit-learn>=1.4.0
+
+# ── Image Processing
+Pillow>=10.0.0
+
+# ── Visualization
+matplotlib>=3.8.0
+seaborn>=0.13.0
+
+# ── Experiment Tracking
+tensorboard>=2.16.0
+
+# ── Config / Utilities
+PyYAML>=6.0.1
+tqdm>=4.66.0
+
+# ── Optional: faster audio decoding
+# ffmpeg-python>=0.2.0

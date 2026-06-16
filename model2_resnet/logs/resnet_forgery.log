@@ -1,0 +1,12 @@
+2026-06-15 16:11:20 | INFO     | resnet_forgery.train | Random seed: 42
+2026-06-15 16:11:20 | INFO     | resnet_forgery.train | Device: mps
+2026-06-15 16:11:20 | INFO     | resnet_forgery.train | Building datasets …
+2026-06-15 16:11:20 | INFO     | resnet_forgery.dataset | Loading HuggingFace dataset: mueller91/In-The-Wild
+2026-06-15 18:46:17 | INFO     | resnet_forgery.train | Random seed: 42
+2026-06-15 18:46:17 | INFO     | resnet_forgery.train | Device: mps
+2026-06-15 18:46:17 | INFO     | resnet_forgery.train | Building datasets …
+2026-06-15 18:46:17 | INFO     | resnet_forgery.dataset | Loading HuggingFace dataset: mueller91/In-The-Wild
+2026-06-16 13:46:03 | INFO     | resnet_forgery.train | Random seed: 42
+2026-06-16 13:46:03 | INFO     | resnet_forgery.train | Device: mps
+2026-06-16 13:46:03 | INFO     | resnet_forgery.train | Building datasets …
+2026-06-16 13:46:03 | INFO     | resnet_forgery.dataset | Loading HuggingFace dataset: mueller91/In-The-Wild

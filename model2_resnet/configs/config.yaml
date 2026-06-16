@@ -1,0 +1,82 @@
+# ============================================================
+# ResNet++ Audio Forgery Detection - Configuration File
+# ============================================================
+
+# Dataset configuration
+dataset:
+  name: "mueller91/In-The-Wild"
+  sample_rate: 16000
+  max_audio_length: 5.0        # seconds; clips/pads audio to this length
+  cache_dir: "./cache"         # directory to store preprocessed spectrograms
+  num_workers: 4
+
+# Preprocessing configuration
+preprocessing:
+  n_mels: 128
+  n_fft: 2048
+  hop_length: 512
+  target_size: [224, 224]      # H x W of spectrogram image
+  # ImageNet mean/std for normalization
+  imagenet_mean: [0.485, 0.456, 0.406]
+  imagenet_std: [0.229, 0.224, 0.225]
+  # SpecAugment parameters
+  spec_augment:
+    time_mask_width: 20
+    freq_mask_width: 10
+    num_time_masks: 2
+    num_freq_masks: 2
+
+# Model configuration
+model:
+  backbone: "resnet50"
+  pretrained: true
+  # CBAM
+  cbam_reduction_ratio: 16
+  cbam_kernel_size: 7
+  # SE Block
+  se_reduction_ratio: 16
+  # Transformer Branch
+  transformer_heads: 8
+  transformer_ff_dim: 8192
+  transformer_dropout: 0.1
+  transformer_layers: 2
+  # Classification Head
+  num_classes: 2
+  fc_hidden_dim: 512
+  dropout_rate: 0.5
+
+# Training configuration
+training:
+  seed: 42
+  epochs: 50
+  batch_size: 16
+  learning_rate: 1.0e-4
+  weight_decay: 1.0e-4
+  grad_clip_norm: 1.0
+  # Scheduler
+  scheduler: "CosineAnnealingLR"
+  scheduler_T_max: 50
+  scheduler_eta_min: 1.0e-6
+  # Mixed precision
+  mixed_precision: true
+  # Early stopping
+  early_stopping_patience: 10
+  early_stopping_metric: "val_f1"
+  # Data splits (if dataset has no predefined splits)
+  train_ratio: 0.7
+  val_ratio: 0.15
+  test_ratio: 0.15
+
+# Paths
+paths:
+  checkpoint_dir: "./checkpoints"
+  log_dir: "./logs"
+  output_dir: "./outputs"
+  cache_dir: "./cache"
+
+# Logging
+logging:
+  tensorboard: true
+  log_every_n_steps: 10
+  save_best_only: true
+  save_top_k: 3

@@ -1,0 +1,43 @@
+# ── Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# ── Virtual environment
+venv/
+env/
+.env/
+.venv/
+
+# ── Model checkpoints (large .pth / .pt files)
+checkpoints/*.pth
+checkpoints/*.pt
+*.pth
+*.pt
+
+# ── TensorBoard logs
+logs/events.out.tfevents.*
+
+# ── Output / data directories (large)
+outputs/
+data/
+
+# ── macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# ── IDE
+.vscode/
+.idea/
+*.swp
+
+# ── Jupyter
+.ipynb_checkpoints/
+
+# ── Distribution / build
+dist/
+build/
+*.egg-info/
