@@ -1,89 +1,48 @@
-# Audio Copy-Move Forgery Detection using MFCC + SVM
+# Audio Deepfake Detection
 
-This project detects audio copy-move forgery using:
+Local-only audio forgery detection using:
 
-- MFCC Feature Extraction
-- Support Vector Machine (SVM)
-- Traditional Machine Learning
+- Optimized ResNet++ with ResNet50, CBAM, SE attention, and a transformer branch
+- Optimized SVM baseline with MFCC, chroma, spectral contrast, RMS, and ZCR features
+- Shared deterministic 70/15/15 train/validation/test splits
+- Automated evaluation, model comparison, dashboard generation, and inference
 
----
+## Dataset
 
-# Dataset
+The dataset must already exist locally at:
 
-Use TIMIT dataset `.wav` files.
+```bash
+dataset/release_in_the_wild/
+```
 
-Place original audio files inside:
+The loader recursively scans `.wav`, `.mp3`, and `.flac` files, reads labels from `meta.csv`, validates audio files, and logs skipped files to `outputs/skipped_files.log`.
 
-dataset/original/
+## Train Everything
 
-Example:
+```bash
+python train_pipeline.py
+```
 
-dataset/original/sample1.wav
-dataset/original/sample2.wav
+Outputs are saved under `outputs/`, including:
 
----
+- `resnet_metrics.json`
+- `svm_metrics.json`
+- `model_comparison.json`
+- `report.html`
+- `best_model/`
 
-# Install Requirements
+## Predict
 
-pip install -r requirements.txt
+Single file:
 
----
+```bash
+python predict.py path/to/audio.wav
+```
 
-# Run Project
+Folder:
 
-python main.py
+```bash
+python predict.py path/to/folder/
+```
 
----
-
-# What the Project Does
-
-1. Loads original audio files
-2. Creates forged audio automatically
-3. Extracts MFCC features
-4. Trains SVM classifier
-5. Evaluates detection performance
-
----
-
-# Labels
-
-0 = Original Audio  
-1 = Forged Audio
-
----
-
-# Features Used
-
-- 13 MFCC coefficients
-- Mean
-- Standard Deviation
-
-Final feature vector size:
-
-26 features
-
----
-
-# Model Used
-
-SVM with:
-- RBF kernel
-- StandardScaler
-
----
-
-# Evaluation Metrics
-
-- Accuracy
-- Precision
-- Recall
-- F1-score
-- Confusion Matrix
-
----
-
-# Suitable For
-
-- Final Year Project
-- Research Prototype
-- Beginner Learning
+Batch predictions are saved to `outputs/predictions.csv`.

@@ -1,0 +1,87 @@
+Audio Forgery Detection - Steps to Run the Project
+===================================================
+
+This project implements local-only audio forgery detection using an optimized ResNet++ model and an SVM baseline model.
+
+Follow these steps using Python 3 to set up the environment, train the models, and run predictions.
+
+
+1. Prerequisites
+----------------
+Make sure you have Python 3 (preferably Python 3.8 or higher) installed on your system.
+You can verify this by running:
+  python3 --version
+
+
+2. Setup the Virtual Environment
+--------------------------------
+Create and activate a virtual environment to manage dependencies:
+
+# Create the virtual environment
+python3 -m venv venv
+
+# Activate the virtual environment
+# On macOS and Linux:
+source venv/bin/activate
+
+# On Windows:
+# .\venv\Scripts\activate
+
+
+3. Install Dependencies
+-----------------------
+Install the required packages. All key deep learning, machine learning, and audio processing packages are listed in `model2_resnet/requirements.txt`:
+
+# Upgrade pip first
+pip install --upgrade pip
+
+# Install dependencies
+pip install -r model2_resnet/requirements.txt
+
+Note for Apple Silicon (macOS MPS):
+To utilize the Apple GPU (MPS), you can install PyTorch optimized for macOS:
+  pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+
+Note for Nvidia GPU (CUDA):
+To utilize CUDA 12.x for accelerated training, you can install the CUDA-supported PyTorch:
+  pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+
+
+4. Prepare the Dataset
+----------------------
+Ensure your dataset is placed at the following directory relative to the project root:
+  dataset/release_in_the_wild/
+
+The data loader will recursively look for `.wav`, `.mp3`, and `.flac` files under this folder, and read metadata labels from `meta.csv` located there.
+
+
+5. Train the Pipeline
+---------------------
+Train both the SVM baseline and ResNet++ model, evaluate them, compare results, and deploy the best performing model.
+
+Run the main training pipeline script:
+  python3 train_pipeline.py
+
+Optional flags:
+- If you only want to quickly run/test the SVM pipeline and skip ResNet++ training, run:
+  python3 train_pipeline.py --skip-resnet
+
+Outputs will be saved in the `outputs/` folder:
+- `resnet_metrics.json`
+- `svm_metrics.json`
+- `model_comparison.json`
+- `report.html` (detailed HTML dashboard summary)
+- `best_model/` (contains the saved best model weights and metadata)
+
+
+6. Run Inference / Predict
+--------------------------
+Use the deployed best model to predict whether audio files are REAL or FAKE.
+
+A) Predict a single audio file:
+  python3 predict.py path/to/audio.wav
+
+B) Predict a folder of audio files:
+  python3 predict.py path/to/folder/
+
+Batch predictions for folders will automatically be saved to `outputs/predictions.csv`.

@@ -24,3 +24,11 @@ ENV/
 
 # Local model checkpoint or graphs
 *.png
+
+# Dataset and cache directories
+dataset/release_in_the_wild/
+cache/
+
+# Training outputs, logs, and checkpoints
+outputs/
+
