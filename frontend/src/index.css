@@ -76,8 +76,6 @@
 *,
 *::before,
 *::after {
-  margin: 10;
-  padding: 10;
   box-sizing: border-box;
 }
 
