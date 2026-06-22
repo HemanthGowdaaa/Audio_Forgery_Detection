@@ -1,0 +1,323 @@
+================================================================================
+                       AUDIO FORGERY DETECTION SYSTEM
+                          COMPREHENSIVE PROJECT REPORT
+================================================================================
+
+This document provides a detailed overview of the Audio Forgery Detection system,
+including system architecture, traditional and hybrid models, methodology steps,
+experimental results, and a detailed comparative analysis.
+
+---
+
+## 1. SYSTEM ARCHITECTURE DIAGRAMS
+
+### A. ResNet++ Hybrid Model Architecture
+Below is the block diagram representing the data flow and layer interactions in 
+the ResNet++ hybrid deep learning model:
+
++-------------------------------------------------------------------------------+
+|                             Input Audio File (.wav, .mp3, .flac)              |
++-------------------------------------------------------------------------------+
+                                       |
+                                       v [Preprocess: Mono, 16kHz, 5.0s Clip]
++-------------------------------------------------------------------------------+
+|                         Log-Mel Spectrogram (128 Mel bins)                     |
++-------------------------------------------------------------------------------+
+                                       |
+                                       v [Resize to 224x224, Repeat 3 Channels]
++-------------------------------------------------------------------------------+
+|                            Input Tensor [B, 3, 224, 224]                      |
++-------------------------------------------------------------------------------+
+                                       |
+                                       v
++-------------------------------------------------------------------------------+
+|                          ResNet50 Backbone (FC layer removed)                 |
+|                     Extracts spectro-temporal maps of shape:                  |
+|                                [B, 2048, 7, 7]                                |
++-------------------------------------------------------------------------------+
+                                       |
+                                       v
++-------------------------------------------------------------------------------+
+|                     CBAM Module (Convolutional Block Attention)                |
+|       - Channel Attention: Focuses on "what" features are forgery indicators   |
+|       - Spatial Attention: Focuses on "where" in the spectrogram edits occur  |
++-------------------------------------------------------------------------------+
+                                       |
+                                       +----------------------------------------+
+                                       |                                        |
+                                       v [Branch 1: Channel-Wise]               v [Branch 2: Sequential]
++-------------------------------------------------------------------------------+-----------------------+
+|                       Squeeze-and-Excitation (SE) Block                       |  Transformer Branch   |
+|                                                                               |                       |
+|   1. Spatial Squeeze: Global Average Pooling -> [B, 2048, 1, 1]               |  1. Flatten Spatial   |
+|   2. Channel Excitation: MLP (Linear -> ReLU -> Linear -> Sigmoid)            |     [B, 49, 2048]     |
+|   3. Feature Scaling: Multiply input by channel excitation weights            |  2. Positional Embed  |
+|                                                                               |     (learnable 1D)    |
+|                                                                               |  3. Multi-Head Self-  |
+|                                                                               |     Attention (8 heads|
+|                                                                               |     1 Encoder Layer)  |
+|                                                                               |  4. Reshape back to   |
+|                                                                               |     [B, 2048, 7, 7]   |
++-------------------------------------------------------------------------------+-----------------------+
+                                       |                                        |
+                                       +-------------------+--------------------+
+                                                           |
+                                                           v [Residual Addition: SE + Transformer]
++-------------------------------------------------------------------------------+
+|                               1x1 Fusion Convolution                          |
+|                   Combines parallel branch outputs with BN + ReLU             |
+|                                [B, 2048, 7, 7]                                |
++-------------------------------------------------------------------------------+
+                                       |
+                                       v
++-------------------------------------------------------------------------------+
+|                       Multi-Scale Feature Fusion Block                        |
+|   Parallel Convolutions to extract local and global context simultaneously:    |
+|     - 1x1 Conv (512 ch)   - 3x3 Conv (512 ch)                                 |
+|     - 5x5 Conv (512 ch)   - 7x7 Conv (512 ch)                                 |
+|   Concat outputs [B, 2048, 7, 7] -> Project 1x1 Conv -> [B, 2048, 7, 7]       |
++-------------------------------------------------------------------------------+
+                                       |
+                                       v
++-------------------------------------------------------------------------------+
+|                              Classification Head                              |
+|   1. Global Average Pooling (GAP) -> [B, 2048]                                |
+|   2. Linear Projection (2048 -> 512) -> BatchNorm -> ReLU -> Dropout (0.5)    |
+|   3. Output Projection Layer (512 -> 2)                                       |
++-------------------------------------------------------------------------------+
+                                       |
+                                       v
++-------------------------------------------------------------------------------+
+|                         Output Logits: REAL / FAKE                            |
++-------------------------------------------------------------------------------+
+
+
+### B. Traditional SVM Baseline Model Architecture
+Below is the diagram representing the data flow in the Support Vector Machine pipeline:
+
++-------------------------------------------------------------------------------+
+|                             Input Audio File (.wav, .mp3, .flac)              |
++-------------------------------------------------------------------------------+
+                                       |
+                                       v [Preprocess: Mono, 16kHz, 5.0s Clip]
++-------------------------------------------------------------------------------+
+|                              Feature Extraction Bundle                        |
+|   Extracts 5 types of hand-crafted audio descriptors:                         |
+|     - MFCC (20 coefficients): Captures spectral envelope & envelope dynamics  |
+|     - Chroma STFT (12 bins): Measures harmonic and pitch distribution         |
+|     - Spectral Contrast (7 sub-bands): Captures spectral valley-peak texture |
+|     - Root Mean Square (1 frame-wise value): Measures signal energy           |
+|     - Zero Crossing Rate (1 frame-wise value): Detects noise and edits        |
++-------------------------------------------------------------------------------+
+                                       |
+                                       v
++-------------------------------------------------------------------------------+
+|                            Statistical Aggregation                            |
+|   Aggregates frame-wise features across time using four statistical metrics:   |
+|     - Mean  - Standard Deviation  - Minimum  - Maximum                        |
+|   Dimension calculation: 41 total features * 4 stats = 164-D Feature Vector   |
++-------------------------------------------------------------------------------+
+                                       |
+                                       v
++-------------------------------------------------------------------------------+
+|                              StandardScaler (z-score)                         |
+|             Normalizes feature vector to mean = 0, variance = 1               |
++-------------------------------------------------------------------------------+
+                                       |
+                                       v
++-------------------------------------------------------------------------------+
+|                             GridSearchCV Hyperparameters                      |
+|                Optimizes: kernel='rbf', C=100, gamma='scale'                  |
++-------------------------------------------------------------------------------+
+                                       |
+                                       v
++-------------------------------------------------------------------------------+
+|                            Support Vector Machine Classifier                  |
+|                 Estimates class probabilities using balanced weights          |
++-------------------------------------------------------------------------------+
+                                       |
+                                       v
++-------------------------------------------------------------------------------+
+|                         Output Prediction: REAL / FAKE                        |
++-------------------------------------------------------------------------------+
+
+---
+
+## 2. DETAIL EXPLANATION OF MODULES AND COMPONENTS
+
+### A. Preprocessing Modules
+*   **Audio Normalization & Loading (Traditional & Hybrid)**: 
+    Audio is loaded as mono and resampled to 16,000 Hz. The signal is adjusted to a 
+    fixed duration of 5.0 seconds. Clips longer than 5 seconds are center-cropped; 
+    clips shorter are zero-padded. Amplitude normalization is applied, transforming 
+    the raw signal to zero mean and unit variance.
+*   **Spectrogram Generation (Hybrid)**: 
+    Computes a Mel spectrogram with 128 frequency bands using a frame window size 
+    (N_FFT) of 2048 and a step size (hop length) of 512 samples. The power spectrogram 
+    is converted to decibel units (log-scale) to approximate human auditory perception. 
+    It is then resized to 224x224 pixels and replicated to 3 channels to align with 
+    standard deep learning backbones. Finally, ImageNet normalization is applied.
+*   **Hand-crafted Feature Extraction (Traditional)**: 
+    Extracts frame-by-frame values of:
+    *   *MFCC (Mel-Frequency Cepstral Coefficients)*: Represents the overall 
+        spectral shape.
+    *   *Chroma STFT*: Groups frequency spectrum energy into 12 semitone bins, 
+        capturing harmonic qualities.
+    *   *Spectral Contrast*: Computes the difference between peaks and valleys 
+        in 7 octave-based sub-bands, exposing sub-band dynamics.
+    *   *RMS (Root Mean Square)*: Computes envelope energy to track signal 
+        amplitude variations.
+    *   *ZCR (Zero Crossing Rate)*: Records the frequency of sign changes in 
+        the signal, helping detect high-frequency noise and synthesis gaps.
+
+### B. Core Classifier Architectures
+*   **ResNet50 Backbone**:
+    Processes 224x224x3 spectrograms, performing spatial downsampling and feature 
+    extraction via residual blocks. The final fully connected classification layer is 
+    removed, yielding a high-dimensional feature map of shape `[2048, 7, 7]`.
+*   **CBAM (Convolutional Block Attention Module)**:
+    Applies double attention:
+    *   *Channel Attention*: Squeezes spatial dimension using both MaxPool and 
+        AvgPool, passes results through a shared MLP, and sums them to scale 
+        channel weights.
+    *   *Spatial Attention*: Computes average and max values along the channel 
+        dimension, concatenates them, and applies a 7x7 conv to direct spatial focus.
+*   **Squeeze-and-Excitation (SE) Block**:
+    Performs channel relationship scaling. Squeezes the channel map via global average 
+    pooling into a 1D vector and passes it through an excitation bottleneck (reduction 
+    ratio = 16) to scale channel maps by their relative importance.
+*   **Transformer Branch**:
+    Flattens spatial dimensions (`7x7 = 49` tokens) and adds learnable 1D positional 
+    embeddings to inject temporal sequencing information. It then feeds tokens through 
+    a Multi-Head Self-Attention (MHSA) encoder (8 heads, hidden dimension 4096), 
+    enabling the model to associate acoustic features across distant frames of the audio.
+*   **Multi-Scale Fusion (MSF) Block**:
+    Uses four parallel conv branches with kernels 1x1, 3x3, 5x5, and 7x7 to extract 
+    information at different resolutions. This allows the model to simultaneously 
+    detect short-term tampering artifacts and long-term acoustic anomalies.
+*   **Support Vector Machine (SVM)**:
+    Utilizes aggregated statistical features (mean, std, min, max) of handcrafted 
+    spectral representations. Standardizes features via z-score normalization and 
+    classifies samples using a Radial Basis Function (RBF) kernel, which maps the 
+    164-D feature space into higher dimensions for non-linear separation.
+
+---
+
+## 3. METHODOLOGY IMPLEMENTATION STEPS
+
+1.  **Dataset Scanning and Validation**: 
+    The preprocessing engine recursively scans `dataset/release_in_the_wild/`. 
+    Audio files (`.wav`, `.mp3`, `.flac`) are checked for integrity. Missing or 
+    damaged files are logged to `outputs/skipped_files.log`.
+2.  **Stratified Data Splitting**: 
+    The clean dataset is partitioned into 70% training, 15% validation, and 15% 
+    testing splits. Class distributions (REAL vs. FAKE) are stratified across splits 
+    to maintain equal class ratios. Manifests are saved as CSV files.
+3.  **Feature Preprocessing Cache**: 
+    Audio loading and feature extraction are computationally heavy. Feature caching 
+    computes SHA-1 hash signatures from file paths and modification times. Feature 
+    bundles are stored as `.npy` files to bypass feature recalculation on subsequent runs.
+4.  **Traditional SVM Training Pipeline**:
+    *   Selects a stratified subset of training samples (up to 6000) for tuning.
+    *   Runs 3-fold Grid Search Cross-Validation (GridSearchCV) to locate optimal 
+        values for C, gamma, and kernel hyper-parameters.
+    *   Retrains on up to 12000 stratified samples using the selected parameters.
+    *   Saves the resulting pipeline model to `outputs/svm_model.joblib`.
+5.  **Hybrid ResNet++ Training Pipeline**:
+    *   Initializes the hybrid deep neural network, loaded with ImageNet weights 
+        for the ResNet50 backbone.
+    *   Checks class balances and configures a Weighted Cross-Entropy Loss to counter 
+        class distribution skew.
+    *   Trains the model using AdamW optimizer with Cosine Annealing learning rate 
+        scheduling (learning rate: 1e-4, weight decay: 1e-4).
+    *   Optimizes using mixed precision (Automatic Mixed Precision - AMP) on CUDA 
+        and clips gradients to 1.0.
+    *   Monitors Validation F1 Score and triggers Early Stopping (patience: 10 epochs).
+6.  **Unified Evaluation and Deployment**:
+    *   Loads the best checkpoints from both classifiers and runs evaluation on the 
+        identical, shared test split.
+    *   Computes performance metrics: Accuracy, Precision, Recall, F1-Score, 
+        ROC-AUC, PR-AUC, Confusion Matrix, and ROC/PR curves.
+    *   Compares F1 Scores, selects the best model, copies it to `best_model/` and 
+        writes metadata summaries.
+    *   Generates a standalone `report.html` interactive dashboard.
+
+---
+
+## 4. OBTAINED RESULTS AND COMPARATIVE ANALYSIS
+
+### A. Performance Summary Table
+Below is the evaluation summary of both models executed on the shared test split:
+
+| Metric | Traditional SVM Model | Hybrid ResNet++ Model |
+| :--- | :---: | :---: |
+| **Accuracy** | 98.60% (0.9860) | 62.50% (0.6250) |
+| **Precision** | 98.38% (0.9838) | 0.00% (0.0000) |
+| **Recall** | 97.85% (0.9785) | 0.00% (0.0000) |
+| **F1-Score** | 98.11% (0.9811) | 0.00% (0.0000) |
+| **ROC AUC** | 99.82% (0.9982) | 54.58% (0.5458) |
+| **PR AUC** | 99.74% (0.9974) | 39.86% (0.3986) |
+| **Training Time** | 284.823 seconds | 10004.999 seconds |
+| **Best Hyperparameters**| C=100, gamma='scale', RBF | Epochs: 2, Learning Rate: 1e-4 |
+| **Dataset Subsetting** | Capped at 6000 grid / 6000 final | Capped at 160 train / 32 val / 32 test |
+
+### B. Confusion Matrix Breakdown
+*   **Traditional SVM Model**:
+    *   True Negatives (REAL correctly predicted): **622**
+    *   False Positives (REAL predicted as FAKE): **6**
+    *   False Negatives (FAKE predicted as REAL): **8**
+    *   True Positives (FAKE correctly predicted): **364**
+*   **Hybrid ResNet++ Model**:
+    *   True Negatives (REAL correctly predicted): **20**
+    *   False Positives (REAL predicted as FAKE): **0**
+    *   False Negatives (FAKE predicted as REAL): **12**
+    *   True Positives (FAKE correctly predicted): **0**
+
+### C. Detailed Comparative Analysis
+
+1.  **Sample Efficiency and Capped Subsets**:
+    The most striking outcome of this project is the massive performance gap 
+    favoring the traditional SVM model (98.60% accuracy vs. 62.50% accuracy). This 
+    discrepancy is directly linked to the training configurations. 
+    The training split was heavily capped in `config.yaml` (`train_subset: 160`). 
+    While the SVM was trained on a larger subset (up to 6000 samples) and was able 
+    to generalize using robust handcrafted features, the ResNet++ model was trained 
+    on only 160 samples for 2 epochs. 
+    Deep neural networks (especially complex hybrid models containing 155 million 
+    parameters) are extremely data-hungry. Training such a network on 160 samples 
+    for just 2 epochs does not give the network enough optimization steps to learn 
+    meaningful spectral features. As a result, ResNet++ collapsed, predicting the 
+    majority class (REAL) for all samples, yielding a F1-Score of 0.0%.
+
+2.  **Handcrafted Features vs. Representation Learning**:
+    Handcrafted features (MFCC, Chroma, Spectral Contrast, ZCR, and RMS) aggregate 
+    domain-specific knowledge of audio signals. They capture spectral shape, harmonicity, 
+    energy, and frequency crossovers directly. Because the feature dimensionality is 
+    low (164 dimensions) and carries highly concentrated information, a simple SVM with 
+    an RBF kernel can draw highly effective decision boundaries even with small amounts 
+    of data. 
+    On the other hand, ResNet++ must learn representations directly from 2D log-Mel 
+    spectrograms. The raw input dimensionality is high (224 x 224 x 3 = 150,528 dimensions). 
+    Learning attention maps (CBAM, SE), sequential dependencies (Transformer), and 
+    multi-scale filters (MSF) from raw data requires thousands of training samples and 
+    dozens of epochs to achieve convergence.
+
+3.  **Computational Complexity and Training Time**:
+    ResNet++ took 10,004.99 seconds (approx. 2.77 hours) to train for only 2 epochs 
+    on the subset, whereas the SVM grid search and final training on 6000 samples 
+    completed in just 284.82 seconds (approx. 4.7 minutes). Deep learning models present 
+    heavy computational overhead, requiring accelerated hardware (GPU/MPS) and long 
+    training runs.
+
+4.  **Deployment Recommendations**:
+    *   **Low-resource / Fast Deployment**: The SVM pipeline is the clear winner for 
+        deploying immediately. It provides excellent accuracy (98.60%), high precision, 
+        and low latency.
+    *   **Production Deepfake Security**: While the current ResNet++ implementation 
+        underperformed due to strict training limits, it remains the theoretically superior 
+        architecture for detecting advanced AI voice clones and synthetic speech generator 
+        artifacts that bypass handcrafted features. For production deployment, the 
+        subset caps in `config.yaml` must be removed, and ResNet++ must be trained 
+        on the full dataset (30,000+ samples) for 20-50 epochs using GPU acceleration.
+
+================================================================================

@@ -1,0 +1,62 @@
+# =============================================================================
+# render.yaml — Render Blueprint for Audio Forgery Detection
+# =============================================================================
+# This file defines both services. Run:
+#   render blueprint launch
+# from the repo root to deploy both services in one shot.
+# =============================================================================
+
+services:
+  # ─────────────────────────────────────────────────────────────────────────
+  # Service 1: Django Backend Web Service
+  # ─────────────────────────────────────────────────────────────────────────
+  - type: web
+    name: audio-forgery-api
+    runtime: python
+    region: oregon
+    plan: starter         # 2 GB RAM — required for the 1.6 GB ResNet model
+    rootDir: django_backend
+    buildCommand: "./build.sh"
+    startCommand: "gunicorn audio_forgery_project.wsgi:application --bind 0.0.0.0:$PORT --workers 1 --timeout 120"
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: RENDER
+        value: "true"
+      - key: DJANGO_DEBUG
+        value: "False"
+      - key: DJANGO_SECRET_KEY
+        generateValue: true       # Render auto-generates a secure random value
+      - key: HF_REPO_ID
+        value: Hkm2003/audio-forgery-models
+      - key: FRONTEND_URL
+        value: https://audio-forgery-ui.onrender.com   # Update after frontend deploys
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Service 2: React / Vite Static Site (Frontend)
+  # ─────────────────────────────────────────────────────────────────────────
+  - type: web
+    name: audio-forgery-ui
+    runtime: static
+    region: oregon
+    rootDir: frontend
+    buildCommand: "npm install && npm run build"
+    staticPublishPath: ./dist
+    pullRequestPreviewsEnabled: true
+    headers:
+      - path: /*
+        name: Cache-Control
+        value: no-cache
+      - path: /assets/*
+        name: Cache-Control
+        value: public, max-age=31536000, immutable
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html   # SPA catch-all for React Router
+    envVars:
+      - key: VITE_API_BASE_URL
+        value: https://audio-forgery-api.onrender.com
+      - key: NODE_VERSION
+        value: 20.11.0

@@ -32,3 +32,11 @@ cache/
 # Training outputs, logs, and checkpoints
 outputs/
 
+# Django generated (collectstatic output, db)
+django_backend/staticfiles/
+django_backend/media/
+django_backend/db.sqlite3
+django_backend/outputs/
+
+# Do NOT ignore render.yaml — needed for Render deployment
+# !render.yaml
