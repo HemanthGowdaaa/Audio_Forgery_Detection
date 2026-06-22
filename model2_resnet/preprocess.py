@@ -1,5 +1,5 @@
 """
-preprocess.py
+preprocess.py  (M2-Optimized)
 =============
 Audio preprocessing pipeline for the ResNet++ Audio Forgery Detection framework.
 
@@ -7,12 +7,19 @@ Pipeline steps (in order):
   1. Load audio at 16 kHz (resample if needed)
   2. Zero-mean / unit-variance normalization
   3. Pre-emphasis filtering
-  4. Mel Spectrogram  (n_mels=128, n_fft=2048, hop_length=512)
+  4. Mel Spectrogram  (n_mels configurable, default 80)
   5. Power → dB conversion
-  6. Resize to 224×224
-  7. Convert to 3-channel image (replicate single channel)
+  6. Resize to target_size (default 128×128) via F.interpolate (no PIL)
+  7. Convert to 3-channel image (expand, zero-copy)
   8. ImageNet normalization
   9. Optional SpecAugment (time + frequency masking)
+
+OPTIMIZATIONS:
+  - MelSpectrogramExtractor uses F.interpolate instead of PIL resize.
+    This avoids the numpy→PIL→tensor round-trip, saving ~1 memory copy
+    per sample and removing PIL as a dependency for the resize step.
+  - get_extractor() provides a cached module-level instance so callers
+    can reuse the same transform objects across __getitem__ calls.
 """
 
 import io
@@ -222,29 +229,30 @@ class MelSpectrogramExtractor:
         # ── Convert to dB scale → same shape
         mel_db = self.amplitude_to_db(mel_spec)
 
-        # ── Normalize mel_db to [0, 1] for PIL conversion
+        # ── Min-max normalize to [0, 1]
         mel_min = mel_db.min()
         mel_max = mel_db.max()
-        mel_norm = (mel_db - mel_min) / (mel_max - mel_min + 1e-9)
+        mel_norm = (mel_db - mel_min) / (mel_max - mel_min + 1e-9)  # [1, n_mels, T]
 
-        # ── Convert to HxW uint8 image via PIL for bilinear resize
-        # mel_norm shape: [1, n_mels, T] → squeeze to [n_mels, T]
-        mel_np = (mel_norm.squeeze(0).numpy() * 255).astype(np.uint8)
-        pil_img = Image.fromarray(mel_np, mode="L")   # grayscale
-        pil_img = pil_img.resize(
-            (self.target_w, self.target_h), resample=Image.BILINEAR
-        )
+        # ── Resize via F.interpolate (REPLACES the PIL round-trip)
+        #    Input:  [1, n_mels, T]  → unsqueeze → [1, 1, n_mels, T]
+        #    Output: [1, 1, H, W]   → squeeze   → [1, H, W]
+        #    This is a pure-tensor operation — no numpy/PIL/uint8 conversion.
+        import torch.nn.functional as F
+        tensor = F.interpolate(
+            mel_norm.unsqueeze(0),
+            size=(self.target_h, self.target_w),
+            mode="bilinear",
+            align_corners=False,
+        ).squeeze(0)   # [1, H, W]
 
-        # ── Replicate single channel → 3-channel image
-        pil_rgb = pil_img.convert("RGB")
-
-        # ── Convert to tensor [3, H, W] in [0, 1]
-        tensor = VT.functional.to_tensor(pil_rgb)   # float32 in [0, 1]
+        # ── Replicate to 3 channels via expand (zero-copy view, then contiguous)
+        tensor = tensor.expand(3, -1, -1).contiguous()   # [3, H, W]
 
         # ── Apply ImageNet normalization
         tensor = self.normalize(tensor)
 
-        return tensor   # [3, 224, 224]
+        return tensor.float()   # [3, H, W]
 
 
 # ---------------------------------------------------------------------------

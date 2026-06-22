@@ -1,82 +1,100 @@
 # ============================================================
-# ResNet++ Audio Forgery Detection - Configuration File
+# ResNet++ Audio Forgery Detection - M2-Optimized Configuration
 # ============================================================
+# OPTIMIZATION NOTES:
+#   - target_size 224→128:  saves ~68% feature-map memory
+#   - transformer_ff_dim 8192→512:  saves ~16x Transformer RAM
+#   - batch_size 16→4:  reduces activation memory 4x
+#   - gradient_accumulation_steps 4:  effective batch=16 without peak RAM spike
+#   - pretrained false:  skip large weight download during dev; set true for final run
+#   - num_workers 0:  avoids subprocess memory copies on Mac
 
-# Dataset configuration
+# ─── Dataset ────────────────────────────────────────────────
 dataset:
-  name: "mueller91/In-The-Wild"
+  # Local manifest CSVs (already on disk — no HuggingFace network load needed)
+  train_manifest: "../outputs/train_manifest.csv"
+  val_manifest:   "../outputs/val_manifest.csv"
+  test_manifest:  "../outputs/test_manifest.csv"
+  # Audio params
   sample_rate: 16000
-  max_audio_length: 5.0        # seconds; clips/pads audio to this length
-  cache_dir: "./cache"         # directory to store preprocessed spectrograms
-  num_workers: 4
+  max_audio_length: 4.0      # seconds (trimmed from 5.0 → saves 20% waveform RAM)
+  extensions: [".wav", ".mp3", ".flac"]
+  seed: 42
+  # Subset limits (set to null to use full split)
+  train_subset: 2000
+  validation_subset: 400
+  test_subset: 200
+  # DataLoader
+  num_workers: 0             # IMPORTANT: 0 on Mac to avoid fork-copy OOM
 
-# Preprocessing configuration
+# ─── Preprocessing ──────────────────────────────────────────
 preprocessing:
-  n_mels: 128
-  n_fft: 2048
-  hop_length: 512
-  target_size: [224, 224]      # H x W of spectrogram image
-  # ImageNet mean/std for normalization
+  n_mels: 80                 # 128→80: ~38% fewer mel bins, still captures all speech frequencies
+  n_mfcc: 20
+  n_fft: 1024                # 2048→1024: halves FFT window, enough for 16kHz at 4s
+  hop_length: 256            # 512→256: finer time resolution to compensate for smaller n_mels
+  target_size: [128, 128]    # 224×224→128×128: 68% less feature map memory
   imagenet_mean: [0.485, 0.456, 0.406]
-  imagenet_std: [0.229, 0.224, 0.225]
-  # SpecAugment parameters
+  imagenet_std:  [0.229, 0.224, 0.225]
+  # SpecAugment (lighter masks for smaller input)
   spec_augment:
-    time_mask_width: 20
-    freq_mask_width: 10
-    num_time_masks: 2
-    num_freq_masks: 2
+    time_mask_width: 15
+    freq_mask_width: 8
+    num_time_masks: 1
+    num_freq_masks: 1
 
-# Model configuration
+# ─── Model ──────────────────────────────────────────────────
 model:
   backbone: "resnet50"
-  pretrained: true
+  pretrained: true         # Set to true for best accuracy; false to skip weight download
+  freeze_backbone_layers: 2  # Freeze layer1+layer2 of ResNet50 (reduces trainable params ~40%)
   # CBAM
   cbam_reduction_ratio: 16
   cbam_kernel_size: 7
   # SE Block
   se_reduction_ratio: 16
-  # Transformer Branch
-  transformer_heads: 8
-  transformer_ff_dim: 8192
+  # Transformer Branch — KEY MEMORY REDUCTION
+  transformer_heads: 4       # 8→4: halves attention head memory
+  transformer_ff_dim: 512    # 8192→512: 16x smaller FFN — biggest single saving
   transformer_dropout: 0.1
-  transformer_layers: 2
+  transformer_layers: 1
   # Classification Head
   num_classes: 2
-  fc_hidden_dim: 512
+  fc_hidden_dim: 256         # 512→256: smaller head
   dropout_rate: 0.5
 
-# Training configuration
+# ─── Training ───────────────────────────────────────────────
 training:
   seed: 42
-  epochs: 50
-  batch_size: 16
+  epochs: 8
+  batch_size: 4             # Keep small for M2 RAM
+  gradient_accumulation_steps: 4   # Effective batch = 4×4 = 16 without memory spike
   learning_rate: 1.0e-4
   weight_decay: 1.0e-4
   grad_clip_norm: 1.0
   # Scheduler
   scheduler: "CosineAnnealingLR"
-  scheduler_T_max: 50
+  scheduler_T_max: 10
   scheduler_eta_min: 1.0e-6
-  # Mixed precision
+  # Mixed precision — enabled; uses torch.autocast (works on CPU & MPS)
   mixed_precision: true
   # Early stopping
-  early_stopping_patience: 10
-  early_stopping_metric: "val_f1"
-  # Data splits (if dataset has no predefined splits)
-  train_ratio: 0.7
-  val_ratio: 0.15
-  test_ratio: 0.15
+  early_stopping_patience: 5
+  # Checkpoint
+  save_best_only: true       # Only save best checkpoint (not every epoch)
+  resume: true
 
-# Paths
+# ─── Paths ──────────────────────────────────────────────────
 paths:
-  checkpoint_dir: "./checkpoints"
-  log_dir: "./logs"
+  checkpoint_dir: "./outputs/resnet_checkpoints"
+  log_dir: "./outputs/logs"
   output_dir: "./outputs"
-  cache_dir: "./cache"
+  cache_dir: "./cache/spectrograms"   # Disk cache for preprocessed tensors
+  best_model_dir: "./outputs/best_model"
 
-# Logging
+# ─── Logging ────────────────────────────────────────────────
 logging:
-  tensorboard: true
+  tensorboard: false         # Disable TensorBoard to save RAM (re-enable if needed)
   log_every_n_steps: 10
   save_best_only: true
-  save_top_k: 3
+  save_top_k: 1

@@ -19,6 +19,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "train_ratio": 0.70,
         "val_ratio": 0.15,
         "test_ratio": 0.15,
+        "train_subset": 5000,
+        "validation_subset": 1000,
+        "test_subset": 1000,
         "num_workers": 2,
     },
     "preprocessing": {
@@ -52,7 +55,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     },
     "training": {
         "seed": 42,
-        "epochs": 20,
+        "epochs": 10,
         "batch_size": 16,
         "learning_rate": 1.0e-4,
         "weight_decay": 1.0e-4,

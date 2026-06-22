@@ -1,87 +1,337 @@
-Audio Forgery Detection - Steps to Run the Project
-===================================================
+Audio Forgery Detection — Complete Run Instructions
+====================================================
+Project: ResNet++ + SVM Hybrid Audio Deepfake Detector
+Hardware: MacBook Air M2 (8 GB RAM) — also works on any Python 3.10+ machine
+Models:   Model 1 → MFCC-SVM Baseline | Model 2 → ResNet++ (CBAM+SE+Transformer)
+Stack:    PyTorch · FastAPI (backend) · React + Vite (frontend)
 
-This project implements local-only audio forgery detection using an optimized ResNet++ model and an SVM baseline model.
 
-Follow these steps using Python 3 to set up the environment, train the models, and run predictions.
+════════════════════════════════════════════════════════════════════
+ PREREQUISITES
+════════════════════════════════════════════════════════════════════
 
+  • Python 3.10 or higher
+  • Node.js 18 or higher (for frontend)
+  • ~4 GB free disk space (models + cache + node_modules)
+  • Dataset placed at:  dataset/release_in_the_wild/  (WAV files + meta.csv)
 
-1. Prerequisites
-----------------
-Make sure you have Python 3 (preferably Python 3.8 or higher) installed on your system.
-You can verify this by running:
+Check versions:
   python3 --version
+  node --version
+  npm --version
 
 
-2. Setup the Virtual Environment
---------------------------------
-Create and activate a virtual environment to manage dependencies:
+════════════════════════════════════════════════════════════════════
+ STEP 0 — Project Root
+════════════════════════════════════════════════════════════════════
 
-# Create the virtual environment
-python3 -m venv venv
-
-# Activate the virtual environment
-# On macOS and Linux:
-source venv/bin/activate
-
-# On Windows:
-# .\venv\Scripts\activate
+All commands below must be run from the project root unless stated otherwise:
+  cd /path/to/DL_project
 
 
-3. Install Dependencies
------------------------
-Install the required packages. All key deep learning, machine learning, and audio processing packages are listed in `model2_resnet/requirements.txt`:
+════════════════════════════════════════════════════════════════════
+ STEP 1 — Create & Activate Python Virtual Environment
+════════════════════════════════════════════════════════════════════
 
-# Upgrade pip first
-pip install --upgrade pip
+  python3 -m venv venv
 
-# Install dependencies
-pip install -r model2_resnet/requirements.txt
+  # macOS / Linux:
+  source venv/bin/activate
 
-Note for Apple Silicon (macOS MPS):
-To utilize the Apple GPU (MPS), you can install PyTorch optimized for macOS:
-  pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+  # Windows:
+  # .\\venv\\Scripts\\activate
 
-Note for Nvidia GPU (CUDA):
-To utilize CUDA 12.x for accelerated training, you can install the CUDA-supported PyTorch:
+You should see (venv) at the start of your terminal prompt.
+
+
+════════════════════════════════════════════════════════════════════
+ STEP 2 — Install Python Dependencies
+════════════════════════════════════════════════════════════════════
+
+Upgrade pip first:
+  pip install --upgrade pip
+
+Install all project dependencies (covers both models + backend):
+  pip install -r model2_resnet/requirements.txt
+  pip install -r backend/requirements.txt
+
+Also install psutil for RAM monitoring during training (optional but helpful):
+  pip install psutil
+
+── For Apple Silicon M1/M2 (MPS acceleration) ──────────────────────
+PyTorch is usually installed correctly by the requirements above.
+If you need to reinstall for MPS support explicitly:
+  pip install torch torchvision torchaudio
+
+Then enable MPS fallback at runtime (train.py does this automatically):
+  export PYTORCH_ENABLE_MPS_FALLBACK=1
+
+── For CUDA GPU (optional, not needed on Mac) ───────────────────────
   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 
+── Install Node.js frontend dependencies ───────────────────────────
+  cd frontend
+  npm install
+  cd ..
 
-4. Prepare the Dataset
-----------------------
-Ensure your dataset is placed at the following directory relative to the project root:
+
+════════════════════════════════════════════════════════════════════
+ STEP 3 — Verify Dataset
+════════════════════════════════════════════════════════════════════
+
+Make sure your dataset WAV files exist at:
   dataset/release_in_the_wild/
 
-The data loader will recursively look for `.wav`, `.mp3`, and `.flac` files under this folder, and read metadata labels from `meta.csv` located there.
+Check that the manifest CSVs exist (created by the first pipeline run):
+  outputs/train_manifest.csv
+  outputs/val_manifest.csv
+  outputs/test_manifest.csv
+
+If the manifest CSVs are missing, they are auto-created when you run
+train_pipeline.py in Step 4.
 
 
-5. Train the Pipeline
----------------------
-Train both the SVM baseline and ResNet++ model, evaluate them, compare results, and deploy the best performing model.
+════════════════════════════════════════════════════════════════════
+ STEP 4A — Train Model 1: SVM Baseline (MFCC Features)
+════════════════════════════════════════════════════════════════════
 
-Run the main training pipeline script:
-  python3 train_pipeline.py
-
-Optional flags:
-- If you only want to quickly run/test the SVM pipeline and skip ResNet++ training, run:
+Run the full pipeline which trains the SVM, evaluates it, and saves results:
   python3 train_pipeline.py --skip-resnet
 
-Outputs will be saved in the `outputs/` folder:
-- `resnet_metrics.json`
-- `svm_metrics.json`
-- `model_comparison.json`
-- `report.html` (detailed HTML dashboard summary)
-- `best_model/` (contains the saved best model weights and metadata)
+This will:
+  • Extract MFCC / spectral features from audio
+  • Train an SVM classifier with cross-validated hyperparameter search
+  • Save model to:     outputs/svm_model.joblib
+  • Save metrics to:   outputs/svm_metrics.json
+  • Generate report:   outputs/report.html
+
+Estimated time: 15–40 minutes depending on dataset size.
+
+(If the SVM model already exists from a previous run, it will be loaded
+ from cache automatically — no retraining needed.)
 
 
-6. Run Inference / Predict
---------------------------
-Use the deployed best model to predict whether audio files are REAL or FAKE.
+════════════════════════════════════════════════════════════════════
+ STEP 4B — Train Model 2: ResNet++ (M2-Optimized)
+════════════════════════════════════════════════════════════════════
 
-A) Predict a single audio file:
+The ResNet++ model uses a dedicated optimized training script.
+Run from the project root:
+
+  cd model2_resnet
+  python3 train.py --config configs/config.yaml
+  cd ..
+
+Key settings (already configured in configs/config.yaml):
+  • train_subset:  2000 samples
+  • epochs:        2
+  • batch_size:    4  (with gradient_accumulation_steps=4 → effective batch=16)
+  • image_size:    128×128
+  • device:        auto-detected (MPS → CPU fallback)
+
+This will:
+  • Load audio lazily from train_manifest.csv (no HuggingFace download needed)
+  • Cache preprocessed spectrograms to ./cache/spectrograms/
+  • Save best checkpoint to: model2_resnet/outputs/resnet_checkpoints/best_model.pth
+  • Save metrics to:          model2_resnet/outputs/best_val_metrics.json
+
+Estimated time (MacBook Air M2):
+  • First epoch (cache cold): ~25–35 minutes
+  • Second epoch (cache warm): ~12–15 minutes
+  • Total: ~40–50 minutes for 2 epochs
+
+To monitor RAM in another terminal:
+  watch -n 2 "ps aux | grep python | grep -v grep | awk '{print \$6/1024 \" MB\"}'"
+
+
+════════════════════════════════════════════════════════════════════
+ STEP 4C — Train BOTH Models Together (Full Pipeline)
+════════════════════════════════════════════════════════════════════
+
+To train both the SVM and ResNet++ in one command, run the master pipeline
+(this calls train_pipeline.py which internally invokes train.py for ResNet++):
+
+  python3 train_pipeline.py
+
+This will:
+  1. Train SVM (or load from cache if already trained)
+  2. Train ResNet++ end-to-end
+  3. Compare both models on the test set
+  4. Deploy the best model to outputs/best_model/
+  5. Generate an HTML comparison report at outputs/report.html
+
+Optional flags:
+  python3 train_pipeline.py --skip-resnet    # SVM only (fast, 15–40 min)
+  python3 train_pipeline.py --config model2_resnet/configs/config.yaml
+
+
+════════════════════════════════════════════════════════════════════
+ STEP 5 — Copy Best ResNet Checkpoint for Backend
+════════════════════════════════════════════════════════════════════
+
+After ResNet++ training, copy the best checkpoint to the location
+the backend expects:
+
+  mkdir -p outputs/best_model
+  cp model2_resnet/outputs/resnet_checkpoints/best_model.pth outputs/best_model/best_resnet.pth
+
+If you also trained via train_pipeline.py (Step 4C), this is done automatically.
+
+
+════════════════════════════════════════════════════════════════════
+ STEP 6 — Start the Backend (Django REST Framework)
+════════════════════════════════════════════════════════════════════
+
+Open a NEW terminal window/tab. Activate the virtual environment:
+
+  source venv/bin/activate          # macOS/Linux
+
+Navigate to the django_backend/ directory and start the server:
+
+  cd django_backend
+  python3 manage.py runserver 127.0.0.1:8000 --noreload
+
+Expected startup output:
+  System check identified no issues (0 silenced).
+  Django server starting: Loading SVM and ResNet++ models into memory...
+  Loaded SVM model from outputs/best_model/best_svm.joblib
+  Loaded ResNet++ model from outputs/best_model/best_resnet.pth
+  Starting development server at http://127.0.0.1:8000/
+
+Backend will start at:      http://localhost:8000
+Legacy Health check:        http://localhost:8000/health
+Legacy Model status:        http://localhost:8000/status
+Versioned API prefix:       http://localhost:8000/api/v1/
+Versioned Health check:     http://localhost:8000/api/v1/health/
+Versioned Model status:     http://localhost:8000/api/v1/model-status/
+
+Note: If models haven't been trained yet, the backend starts in
+"training_required" mode. The /status (or /api/v1/model-status/) endpoint will tell you what's missing.
+
+
+════════════════════════════════════════════════════════════════════
+ STEP 7 — Start the Frontend (React + Vite)
+════════════════════════════════════════════════════════════════════
+
+Open ANOTHER new terminal window/tab:
+
+  cd /path/to/DL_project/frontend
+  npm run dev
+
+Frontend will start at:  http://localhost:5173
+
+Open http://localhost:5173 in your browser.
+The frontend connects to the backend at http://localhost:8000.
+
+To build a production bundle instead:
+  npm run build
+  npm run preview          # serves the built app at http://localhost:4173
+
+
+════════════════════════════════════════════════════════════════════
+ STEP 8 — Run Inference (Command Line)
+════════════════════════════════════════════════════════════════════
+
+You can also predict audio files directly from the command line
+without starting the full backend:
+
+  source venv/bin/activate
+
+  # Predict a single audio file:
   python3 predict.py path/to/audio.wav
 
-B) Predict a folder of audio files:
+  # Predict all files in a folder:
   python3 predict.py path/to/folder/
 
-Batch predictions for folders will automatically be saved to `outputs/predictions.csv`.
+  # Batch predictions are saved to outputs/predictions.csv
+
+
+════════════════════════════════════════════════════════════════════
+ QUICK START — All 3 Processes (copy-paste reference)
+════════════════════════════════════════════════════════════════════
+
+Terminal 1 — Train SVM only (fast baseline):
+──────────────────────────────────────────
+  cd /path/to/DL_project
+  source venv/bin/activate
+  python3 train_pipeline.py --skip-resnet
+
+Terminal 2 — Train ResNet++ (M2-optimized, run after Terminal 1):
+──────────────────────────────────────────────────────────────────
+  source venv/bin/activate
+  cd model2_resnet
+  python3 train.py --config configs/config.yaml
+  cd ..
+  mkdir -p outputs/best_model
+  cp outputs/resnet_checkpoints/best_model.pth outputs/best_model/best_resnet.pth
+
+Terminal 3 — Backend API server:
+─────────────────────────────────
+  source venv/bin/activate
+  python3 -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
+
+Terminal 4 — Frontend dev server:
+──────────────────────────────────
+  cd frontend
+  npm run dev
+
+
+════════════════════════════════════════════════════════════════════
+ OUTPUT FILE REFERENCE
+════════════════════════════════════════════════════════════════════
+
+  outputs/
+  ├── train_manifest.csv            # Training audio paths + labels
+  ├── val_manifest.csv              # Validation split
+  ├── test_manifest.csv             # Test split
+  ├── svm_model.joblib              # Trained SVM classifier
+  ├── svm_metrics.json              # SVM evaluation metrics
+  ├── resnet_metrics.json           # ResNet++ evaluation metrics
+  ├── model_comparison.json         # Side-by-side model comparison
+  ├── report.html                   # HTML dashboard (open in browser)
+  ├── best_model/
+  │   ├── best_resnet.pth           # Best ResNet++ checkpoint
+  │   ├── best_svm.joblib           # Best SVM checkpoint
+  │   └── metadata.json             # Deployment metadata
+  └── resnet_checkpoints/
+      └── best_model.pth            # ResNet++ training checkpoint
+
+  model2_resnet/
+  └── cache/spectrograms/           # Disk-cached mel spectrograms
+                                    # (delete to force reprocessing)
+
+
+════════════════════════════════════════════════════════════════════
+ TROUBLESHOOTING
+════════════════════════════════════════════════════════════════════
+
+Problem: "No module named 'audio_forgery'"
+Solution: Run all scripts from the project ROOT, not from a subdirectory.
+  cd /path/to/DL_project          ← must be here
+  python3 train_pipeline.py
+
+Problem: "TorchCodec is required" when loading WAV files
+Solution: The optimized dataset_manifest.py uses soundfile automatically.
+  pip install soundfile
+
+Problem: "MPS backend out of memory" / OOM errors
+Solution: Already handled — train.py uses CPU autocast fallback.
+  export PYTORCH_ENABLE_MPS_FALLBACK=1
+  python3 model2_resnet/train.py
+
+Problem: Frontend shows "Cannot connect to backend"
+Solution: Make sure the backend is running in a separate terminal at port 8000.
+  curl http://localhost:8000/health     ← should return {"status": "ok"}
+
+Problem: "Port 8000 already in use"
+Solution: Kill the existing process:
+  lsof -ti:8000 | xargs kill -9
+
+Problem: ResNet training is slow (>2 min/epoch)
+Solution: Cache kicks in after the first epoch. Second epoch is ~3× faster.
+  Also confirm MPS is being used:
+  python3 -c "import torch; print(torch.backends.mps.is_available())"
+
+Problem: "best_resnet.pth not found" in backend
+Solution: Copy checkpoint manually:
+  cp model2_resnet/outputs/resnet_checkpoints/best_model.pth outputs/best_model/best_resnet.pth

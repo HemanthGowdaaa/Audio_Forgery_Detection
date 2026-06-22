@@ -33,14 +33,25 @@ def load_audio(path: str | Path, sample_rate: int = 16000, duration: float = 5.0
     return y
 
 
-def _normalize_matrix(feature: np.ndarray) -> np.ndarray:
-    mean = np.mean(feature)
-    std = np.std(feature)
-    return ((feature - mean) / (std + 1e-8)).astype(np.float32)
+def _cache_path(path: str | Path, feature_type: str, cfg: dict) -> Path:
+    p = Path(path)
+    ds = cfg["dataset"]
+    pp = cfg["preprocessing"]
+    # We combine path, mtime, sample rate, duration, and feature_type into the cache key
+    mtime = p.stat().st_mtime_ns if p.exists() else 0
+    key = f"{p.resolve()}|{mtime}|{ds['sample_rate']}|{ds['duration']}|{pp['n_mels']}|{pp['n_mfcc']}|{feature_type}"
+    hasher = hashlib.sha1(key.encode())
+    cache_dir = Path(cfg["paths"].get("cache_dir", "cache")) / "features"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    return cache_dir / f"{hasher.hexdigest()}_{feature_type}.npy"
 
 
-def extract_feature_bundle(path: str | Path, cfg: dict) -> dict[str, np.ndarray]:
-    """Generate normalized Mel, log-Mel, MFCC, chroma, contrast, ZCR, and RMS."""
+def get_mel_spectrogram(path: str | Path, cfg: dict) -> np.ndarray:
+    """Get or extract cached Mel Spectrogram as .npy."""
+    cache_p = _cache_path(path, "mel", cfg)
+    if cache_p.exists():
+        return np.load(cache_p)
+    
     ds = cfg["dataset"]
     pp = cfg["preprocessing"]
     sr = int(ds["sample_rate"])
@@ -53,7 +64,20 @@ def extract_feature_bundle(path: str | Path, cfg: dict) -> dict[str, np.ndarray]
         n_mels=int(pp["n_mels"]),
         power=2.0,
     )
-    log_mel = librosa.power_to_db(mel, ref=np.max)
+    np.save(cache_p, mel)
+    return mel
+
+
+def get_mfcc(path: str | Path, cfg: dict) -> np.ndarray:
+    """Get or extract cached MFCC as .npy."""
+    cache_p = _cache_path(path, "mfcc", cfg)
+    if cache_p.exists():
+        return np.load(cache_p)
+    
+    ds = cfg["dataset"]
+    pp = cfg["preprocessing"]
+    sr = int(ds["sample_rate"])
+    y = load_audio(path, sr, float(ds["duration"]))
     mfcc = librosa.feature.mfcc(
         y=y,
         sr=sr,
@@ -61,6 +85,28 @@ def extract_feature_bundle(path: str | Path, cfg: dict) -> dict[str, np.ndarray]
         n_fft=int(pp["n_fft"]),
         hop_length=int(pp["hop_length"]),
     )
+    np.save(cache_p, mfcc)
+    return mfcc
+
+
+def _normalize_matrix(feature: np.ndarray) -> np.ndarray:
+    mean = np.mean(feature)
+    std = np.std(feature)
+    return ((feature - mean) / (std + 1e-8)).astype(np.float32)
+
+
+def extract_feature_bundle(path: str | Path, cfg: dict) -> dict[str, np.ndarray]:
+    """Generate normalized Mel, log-Mel, MFCC, chroma, contrast, ZCR, and RMS."""
+    ds = cfg["dataset"]
+    pp = cfg["preprocessing"]
+    sr = int(ds["sample_rate"])
+    y = load_audio(path, sr, float(ds["duration"]))
+    
+    # Use cached Mel and MFCC where possible
+    mel = get_mel_spectrogram(path, cfg)
+    mfcc = get_mfcc(path, cfg)
+    
+    log_mel = librosa.power_to_db(mel, ref=np.max)
     chroma = librosa.feature.chroma_stft(y=y, sr=sr, n_fft=int(pp["n_fft"]), hop_length=int(pp["hop_length"]))
     contrast = librosa.feature.spectral_contrast(y=y, sr=sr, n_fft=int(pp["n_fft"]), hop_length=int(pp["hop_length"]))
     zcr = librosa.feature.zero_crossing_rate(y, hop_length=int(pp["hop_length"]))
@@ -77,19 +123,15 @@ def extract_feature_bundle(path: str | Path, cfg: dict) -> dict[str, np.ndarray]
 
 
 def build_resnet_tensor(path: str | Path, cfg: dict) -> torch.Tensor:
-    """Create a 3-channel log-Mel tensor for ResNet50 input."""
-    ds = cfg["dataset"]
-    pp = cfg["preprocessing"]
-    waveform = torch.tensor(load_audio(path, int(ds["sample_rate"]), float(ds["duration"]))).unsqueeze(0)
-    mel = T.MelSpectrogram(
-        sample_rate=int(ds["sample_rate"]),
-        n_fft=int(pp["n_fft"]),
-        hop_length=int(pp["hop_length"]),
-        n_mels=int(pp["n_mels"]),
-        power=2.0,
-    )(waveform)
-    log_mel = T.AmplitudeToDB(stype="power", top_db=80.0)(mel)
+    """Create a 3-channel log-Mel tensor for ResNet50 input using cached Mel Spectrogram."""
+    mel = get_mel_spectrogram(path, cfg)
+    mel_tensor = torch.tensor(mel).unsqueeze(0)
+    
+    # Compute log-Mel
+    log_mel = T.AmplitudeToDB(stype="power", top_db=80.0)(mel_tensor)
     log_mel = (log_mel - log_mel.mean()) / (log_mel.std() + 1e-8)
+    
+    pp = cfg["preprocessing"]
     image = F.interpolate(
         log_mel.unsqueeze(0),
         size=tuple(pp["target_size"]),
@@ -117,13 +159,10 @@ def aggregate_svm_features(bundle: dict[str, np.ndarray]) -> np.ndarray:
 
 def cached_svm_feature(path: str | Path, cfg: dict) -> np.ndarray:
     """Extract or load cached aggregated SVM features."""
-    cache_dir = Path(cfg["paths"]["cache_dir"]) / "svm"
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    p = Path(path)
-    key = f"{p.resolve()}|{p.stat().st_mtime_ns}|{cfg['dataset']['sample_rate']}|{cfg['dataset']['duration']}"
-    cache_path = cache_dir / f"{hashlib.sha1(key.encode()).hexdigest()}.npy"
-    if cache_path.exists():
-        return np.load(cache_path)
-    features = aggregate_svm_features(extract_feature_bundle(p, cfg))
-    np.save(cache_path, features)
+    cache_p = _cache_path(path, "svm", cfg)
+    if cache_p.exists():
+        return np.load(cache_p)
+    features = aggregate_svm_features(extract_feature_bundle(path, cfg))
+    np.save(cache_p, features)
     return features
+

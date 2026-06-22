@@ -151,8 +151,24 @@ def save_split_manifest(splits: dict[str, list[AudioSample]], output_dir: str | 
             writer.writerows(asdict(sample) for sample in samples)
 
 
+def stratified_subset(samples: list[AudioSample], size: int, seed: int) -> list[AudioSample]:
+    """Get a stratified subset of the samples of the specified size."""
+    if len(samples) <= size:
+        return samples
+    labels = np.array([sample.label for sample in samples])
+    stratify = labels if len(np.unique(labels)) == 2 else None
+    subset, _ = train_test_split(
+        samples,
+        train_size=size,
+        random_state=seed,
+        shuffle=True,
+        stratify=stratify,
+    )
+    return subset
+
+
 def load_or_create_splits(cfg: dict) -> dict[str, list[AudioSample]]:
-    """Discover local data and create deterministic splits."""
+    """Discover local data and create deterministic splits with optional subset limits."""
     ds = cfg["dataset"]
     samples = discover_samples(ds["root"], ds["extensions"])
     splits = deterministic_split(
@@ -161,6 +177,16 @@ def load_or_create_splits(cfg: dict) -> dict[str, list[AudioSample]]:
         train_ratio=ds.get("train_ratio", 0.70),
         val_ratio=ds.get("val_ratio", 0.15),
     )
+    
+    # Apply subset caps if configured
+    seed = ds.get("seed", 42)
+    if "train_subset" in ds and ds["train_subset"]:
+        splits["train"] = stratified_subset(splits["train"], int(ds["train_subset"]), seed)
+    if "validation_subset" in ds and ds["validation_subset"]:
+        splits["val"] = stratified_subset(splits["val"], int(ds["validation_subset"]), seed)
+    if "test_subset" in ds and ds["test_subset"]:
+        splits["test"] = stratified_subset(splits["test"], int(ds["test_subset"]), seed)
+        
     save_split_manifest(splits, cfg["paths"]["output_dir"])
     return splits
 
@@ -173,26 +199,13 @@ class ResNetAudioDataset(Dataset[tuple[torch.Tensor, int]]):
         self.cfg = cfg
         self.split = split
         self.augment = augment
-        self.cache_dir = Path(cfg["paths"]["cache_dir"]) / "resnet"
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
 
     def __len__(self) -> int:
         return len(self.samples)
 
-    def _cache_path(self, sample: AudioSample) -> Path:
-        pp = self.cfg["preprocessing"]
-        ds = self.cfg["dataset"]
-        key = f"{sample.path}|{Path(sample.path).stat().st_mtime_ns}|{ds['sample_rate']}|{ds['duration']}|{pp['n_mels']}"
-        return self.cache_dir / f"{hashlib.sha1(key.encode()).hexdigest()}.pt"
-
     def __getitem__(self, index: int) -> tuple[torch.Tensor, int]:
         sample = self.samples[index]
-        cache_path = self._cache_path(sample)
-        if cache_path.exists():
-            tensor = torch.load(cache_path, map_location="cpu", weights_only=True)
-        else:
-            tensor = build_resnet_tensor(sample.path, self.cfg)
-            torch.save(tensor, cache_path)
+        tensor = build_resnet_tensor(sample.path, self.cfg)
         return tensor, sample.label
 
     def class_weights(self) -> torch.Tensor:

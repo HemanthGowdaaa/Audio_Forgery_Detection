@@ -15,13 +15,8 @@ import torch
 from audio_forgery.config import load_config
 from audio_forgery.features import build_resnet_tensor, cached_svm_feature
 
-ROOT = Path(__file__).resolve().parent
-RESNET_DIR = ROOT / "model2_resnet"
-if str(RESNET_DIR) not in sys.path:
-    sys.path.insert(0, str(RESNET_DIR))
-
-from model import build_model  # noqa: E402
-from utils import get_device  # noqa: E402
+from models.model import build_model
+from models.utils import get_device
 
 AUDIO_EXTENSIONS = {".wav", ".mp3", ".flac"}
 

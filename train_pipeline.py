@@ -43,18 +43,15 @@ def _dataset_summary(splits: dict) -> dict[str, int]:
 
 def _deploy_best(best: str, resnet: dict, svm: dict, cfg: dict) -> None:
     best_dir = Path(cfg["paths"]["best_model_dir"])
-    if best_dir.exists():
-        shutil.rmtree(best_dir)
     best_dir.mkdir(parents=True, exist_ok=True)
-    if best == "resnet":
+    if resnet.get("model_path"):
         shutil.copy2(resnet["model_path"], best_dir / "best_resnet.pth")
-    else:
+    if svm.get("model_path"):
         shutil.copy2(svm["model_path"], best_dir / "best_svm.joblib")
     metadata = {
         "best_model": best,
-        "resnet_model_path": resnet["model_path"],
-        "svm_model_path": svm["model_path"],
-        "metrics": resnet["metrics"] if best == "resnet" else svm["metrics"],
+        "resnet_metrics": resnet.get("metrics", {}),
+        "svm_metrics": svm.get("metrics", {}),
     }
     (best_dir / "metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
 
@@ -71,7 +68,16 @@ def main() -> None:
     summary = _dataset_summary(splits)
     save_json(summary, Path(cfg["paths"]["output_dir"]) / "dataset_summary.json")
 
-    svm = train_svm(splits, cfg)
+    svm_model_path = Path(cfg["paths"]["output_dir"]) / "svm_model.joblib"
+    svm_metrics_path = Path(cfg["paths"]["output_dir"]) / "svm_metrics.json"
+    if svm_model_path.exists() and svm_metrics_path.exists():
+        import joblib
+        logging.getLogger(__name__).info("Loaded cached SVM model and metrics.")
+        with open(svm_metrics_path, "r", encoding="utf-8") as f:
+            svm_metrics = json.load(f)
+        svm = {"model": joblib.load(svm_model_path), "model_path": str(svm_model_path), "metrics": svm_metrics}
+    else:
+        svm = train_svm(splits, cfg)
     if args.skip_resnet:
         resnet = {"model_path": "", "metrics": svm["metrics"] | {"model_type": "resnet_skipped"}}
     else:

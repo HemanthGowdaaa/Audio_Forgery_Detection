@@ -17,13 +17,8 @@ from torch.amp import GradScaler, autocast
 from audio_forgery.data import AudioSample, build_resnet_dataloaders
 from audio_forgery.evaluation import compute_metrics, curve_data, save_json
 
-ROOT = Path(__file__).resolve().parents[1]
-RESNET_DIR = ROOT / "model2_resnet"
-if str(RESNET_DIR) not in sys.path:
-    sys.path.insert(0, str(RESNET_DIR))
-
-from model import build_model  # noqa: E402
-from utils import EarlyStopping, count_parameters, get_device, set_seed  # noqa: E402
+from models.model import build_model
+from models.utils import EarlyStopping, count_parameters, get_device, set_seed
 
 LOGGER = logging.getLogger(__name__)
 
