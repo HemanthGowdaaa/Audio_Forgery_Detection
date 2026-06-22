@@ -108,10 +108,23 @@ TIME_ZONE = "UTC"
 USE_I18N = True
 USE_TZ = True
 
-# ── Static Files (WhiteNoise) ─────────────────────────────────────────────────
+# ── Static Files (WhiteNoise) ──────────────────────────────────────────────────────────────────
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
-STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+
+# Ensure staticfiles dir exists to avoid WhiteNoise warnings
+import os as _os
+_os.makedirs(BASE_DIR / "staticfiles", exist_ok=True)
+
+# Use STORAGES (Django 4.2+) instead of deprecated STATICFILES_STORAGE
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
 
 MEDIA_URL = "media/"
 MEDIA_ROOT = BASE_DIR / "media"

@@ -2,10 +2,8 @@
 # =============================================================================
 # build.sh — Render Build Script for Audio Forgery Detection Django Backend
 # =============================================================================
-# Runs during the Render build phase (before the server starts).
-#   1. Install Python dependencies
-#   2. Download trained ML models from Hugging Face Hub (Hkm2003/audio-forgery-models-bucket)
-#   3. Run Django collectstatic + migrate
+# rootDir in render.yaml is "django_backend", so this script runs FROM
+# inside the django_backend/ directory. PROJECT_ROOT is one level up.
 # =============================================================================
 
 set -o errexit   # Exit immediately on any error
@@ -13,96 +11,106 @@ set -o errexit   # Exit immediately on any error
 echo "═══════════════════════════════════════════════════"
 echo " 🔧 Audio Forgery Detection — Render Build Script"
 echo "═══════════════════════════════════════════════════"
+echo "   PWD         : $(pwd)"
+echo "   Python      : $(python3 --version)"
+echo "   Pip         : $(pip --version | cut -d' ' -f1-2)"
+echo ""
 
 # ── 1. Install Python dependencies ──────────────────────────────────────────
-echo ""
 echo "📦 Installing Python dependencies..."
 pip install --upgrade pip
 pip install -r requirements.txt
 
-# ── 2. Download ML model files from Hugging Face Hub ────────────────────────
-echo ""
-echo "🤖 Downloading model files from Hugging Face Hub..."
+# ── 2. Resolve paths ─────────────────────────────────────────────────────────
+# When render.yaml sets rootDir: django_backend, Render sets CWD to
+# /opt/render/project/src/django_backend  (build.sh runs from here)
+DJANGO_DIR="$(pwd)"                          # /opt/render/project/src/django_backend
+PROJECT_ROOT="$(cd "${DJANGO_DIR}/.." && pwd)" # /opt/render/project/src
 
-# The HF_REPO_ID env var is set in render.yaml / Render dashboard
-HF_REPO="${HF_REPO_ID:-Hkm2003/audio-forgery-models-bucket}"
-
-# Resolve the project root (one level up from django_backend/)
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 MODEL_DIR="${PROJECT_ROOT}/outputs/best_model"
 METRICS_DIR="${PROJECT_ROOT}/outputs"
 
-echo "   HF Repo  : ${HF_REPO}"
-echo "   Model Dir: ${MODEL_DIR}"
+# ── 3. Download ML model files from Hugging Face Hub ─────────────────────────
+echo ""
+echo "🤖 Downloading model files from Hugging Face Hub..."
+HF_REPO="${HF_REPO_ID:-Hkm2003/audio-forgery-models-bucket}"
+echo "   HF Repo     : ${HF_REPO}"
+echo "   Project Root: ${PROJECT_ROOT}"
+echo "   Model Dir   : ${MODEL_DIR}"
 
 mkdir -p "${MODEL_DIR}"
 mkdir -p "${METRICS_DIR}"
 
-# Download each file using huggingface_hub Python API
-HF_REPO="${HF_REPO}" PROJECT_ROOT="${PROJECT_ROOT}" python3 - <<'PYEOF'
-import os
-import sys
+# Pass paths via env to the heredoc python script
+export HF_REPO MODEL_DIR METRICS_DIR
+python3 << 'PYEOF'
+import os, sys
 from pathlib import Path
 from huggingface_hub import hf_hub_download
 
-HF_REPO    = os.environ["HF_REPO"]
-MODEL_DIR  = Path(os.environ["PROJECT_ROOT"]) / "outputs" / "best_model"
-METRICS_DIR = Path(os.environ["PROJECT_ROOT"]) / "outputs"
+HF_REPO     = os.environ["HF_REPO"]
+MODEL_DIR   = Path(os.environ["MODEL_DIR"])
+METRICS_DIR = Path(os.environ["METRICS_DIR"])
 
 MODEL_DIR.mkdir(parents=True, exist_ok=True)
 METRICS_DIR.mkdir(parents=True, exist_ok=True)
 
-# Files to download: (filename_in_hf_repo, local_destination)
+# (hf_filename, local_destination_path)
 downloads = [
-    ("best_model/best_resnet.pth",   MODEL_DIR  / "best_resnet.pth"),
-    ("best_model/best_svm.joblib",   MODEL_DIR  / "best_svm.joblib"),
-    ("best_model/metadata.json",     MODEL_DIR  / "metadata.json"),
-    ("svm_metrics.json",             METRICS_DIR / "svm_metrics.json"),
-    ("resnet_metrics.json",          METRICS_DIR / "resnet_metrics.json"),
-    ("model_comparison.json",        METRICS_DIR / "model_comparison.json"),
+    ("best_model/best_resnet.pth",  MODEL_DIR  / "best_resnet.pth"),
+    ("best_model/best_svm.joblib",  MODEL_DIR  / "best_svm.joblib"),
+    ("best_model/metadata.json",    MODEL_DIR  / "metadata.json"),
+    ("svm_metrics.json",            METRICS_DIR / "svm_metrics.json"),
+    ("resnet_metrics.json",         METRICS_DIR / "resnet_metrics.json"),
+    ("model_comparison.json",       METRICS_DIR / "model_comparison.json"),
 ]
 
-all_ok = True
-for hf_filename, local_path in downloads:
-    if local_path.exists():
-        print(f"   ✅ Already exists: {local_path.name}", flush=True)
+errors = []
+for hf_filename, dest in downloads:
+    if dest.exists():
+        size_mb = dest.stat().st_size / 1_048_576
+        print(f"   ✅ Cached: {dest.name} ({size_mb:.1f} MB)", flush=True)
         continue
     try:
-        print(f"   ⬇️  Downloading: {hf_filename} ...", flush=True)
+        print(f"   ⬇️  Downloading {hf_filename} ...", flush=True)
         hf_hub_download(
             repo_id=HF_REPO,
             filename=hf_filename,
-            local_dir=str(local_path.parent),
+            local_dir=str(dest.parent),
             local_dir_use_symlinks=False,
         )
-        # The file lands at local_path.parent / basename(hf_filename)
-        downloaded = local_path.parent / Path(hf_filename).name
-        if downloaded.exists() and downloaded != local_path:
-            downloaded.rename(local_path)
-        if local_path.exists():
-            size_mb = local_path.stat().st_size / 1_048_576
-            print(f"   ✅ Saved: {local_path.name} ({size_mb:.1f} MB)", flush=True)
+        # hf_hub_download saves to dest.parent/basename(hf_filename)
+        landing = dest.parent / Path(hf_filename).name
+        if landing.exists() and landing != dest:
+            landing.rename(dest)
+        if dest.exists():
+            size_mb = dest.stat().st_size / 1_048_576
+            print(f"   ✅ Saved: {dest.name} ({size_mb:.1f} MB)", flush=True)
         else:
-            print(f"   ⚠️  File not found after download: {local_path}", file=sys.stderr)
-            all_ok = False
+            raise FileNotFoundError(f"File not found after download: {dest}")
     except Exception as e:
-        print(f"   ⚠️  WARNING: Could not download {hf_filename}: {e}", file=sys.stderr)
-        all_ok = False
+        print(f"   ⚠️  WARN: {hf_filename} — {e}", file=sys.stderr, flush=True)
+        errors.append(hf_filename)
 
-if all_ok:
-    print("   ✅ All model files downloaded successfully.", flush=True)
+if errors:
+    print(f"\n   ⚠️  Missing files: {errors}", file=sys.stderr)
+    print("   ℹ️  Server will use fallback/default metrics.", file=sys.stderr)
 else:
-    print("   ⚠️  Some model files are missing — server will start with fallback metrics.", file=sys.stderr)
+    print("   ✅ All model files ready.", flush=True)
 PYEOF
 
-# ── 3. Django management commands ───────────────────────────────────────────
+# ── 4. Django management commands ────────────────────────────────────────────
 echo ""
 echo "🗄️  Running Django management commands..."
-python manage.py collectstatic --no-input
-python manage.py migrate --no-input
+
+# Ensure staticfiles directory exists before collectstatic
+mkdir -p staticfiles
+
+# Run from django_backend (CWD is already django_backend on Render)
+python3 manage.py collectstatic --no-input
+python3 manage.py migrate --no-input
 
 echo ""
 echo "═══════════════════════════════════════════════════"
-echo " ✅ Build complete! Server is ready to start."
+echo " ✅ Build complete! Starting gunicorn via Procfile..."
 echo "═══════════════════════════════════════════════════"

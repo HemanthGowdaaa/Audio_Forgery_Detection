@@ -1,9 +1,9 @@
 # =============================================================================
 # render.yaml — Render Blueprint for Audio Forgery Detection
 # =============================================================================
-# Services match the already-deployed Render service names:
-#   Backend : https://audio-forgery-detection-backend.onrender.com
-#   Frontend: https://audio-forgery-detection-frontend.onrender.com
+# Backend : https://audio-forgery-detection-backend.onrender.com
+# Frontend: https://audio-forgery-detection-frontend.onrender.com
+# HF Repo : https://huggingface.co/Hkm2003/audio-forgery-models-bucket
 # =============================================================================
 
 services:
@@ -16,9 +16,16 @@ services:
     region: oregon
     plan: starter         # 2 GB RAM — required to load both ML models
     rootDir: django_backend
-    buildCommand: "./build.sh"
+
+    # build.sh: installs deps, downloads models from HF Hub, runs collectstatic
+    buildCommand: "chmod +x ./build.sh && ./build.sh"
+
+    # Procfile also defines this — both are set for redundancy
+    # $PORT is injected by Render — NEVER hardcode 8000
     startCommand: "gunicorn audio_forgery_project.wsgi:application --bind 0.0.0.0:$PORT --workers 1 --timeout 180 --preload"
+
     healthCheckPath: /health
+
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
@@ -54,7 +61,7 @@ services:
     routes:
       - type: rewrite
         source: /*
-        destination: /index.html   # SPA catch-all for React Router
+        destination: /index.html
     envVars:
       - key: VITE_API_BASE_URL
         value: https://audio-forgery-detection-backend.onrender.com
