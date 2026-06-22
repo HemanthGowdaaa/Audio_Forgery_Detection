@@ -33,7 +33,7 @@ METRICS_DIR="${PROJECT_ROOT}/outputs"
 # ── 3. Download ML model files from Hugging Face Hub ─────────────────────────
 echo ""
 echo "🤖 Downloading model files from Hugging Face Hub..."
-HF_REPO="${HF_REPO_ID:-Hkm2003/audio-forgery-models-bucket}"
+HF_REPO="${HF_REPO_ID:-Hkm2003/audio-forgery-models}"
 echo "   HF Repo     : ${HF_REPO}"
 echo "   Project Root: ${PROJECT_ROOT}"
 echo "   Model Dir   : ${MODEL_DIR}"

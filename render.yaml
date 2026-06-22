@@ -3,7 +3,7 @@
 # =============================================================================
 # Backend : https://audio-forgery-detection-backend.onrender.com
 # Frontend: https://audio-forgery-detection-frontend.onrender.com
-# HF Repo : https://huggingface.co/Hkm2003/audio-forgery-models-bucket
+# HF Repo : https://huggingface.co/Hkm2003/audio-forgery-models
 # =============================================================================
 
 services:
@@ -36,7 +36,7 @@ services:
       - key: DJANGO_SECRET_KEY
         generateValue: true
       - key: HF_REPO_ID
-        value: Hkm2003/audio-forgery-models-bucket
+        value: Hkm2003/audio-forgery-models
       - key: FRONTEND_URL
         value: https://audio-forgery-detection-frontend.onrender.com
 

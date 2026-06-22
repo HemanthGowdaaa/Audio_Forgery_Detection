@@ -177,4 +177,4 @@ REST_FRAMEWORK = {
 ML_CONFIG_PATH = os.getenv("ML_CONFIG_PATH", str(PROJECT_ROOT / "model2_resnet/configs/config.yaml"))
 
 # HuggingFace Hub repo for model downloads (used by build.sh)
-HF_REPO_ID = os.getenv("HF_REPO_ID", "Hkm2003/audio-forgery-models-bucket")
+HF_REPO_ID = os.getenv("HF_REPO_ID", "Hkm2003/audio-forgery-models")
