@@ -30,10 +30,14 @@ DEBUG = os.getenv("DJANGO_DEBUG", "False" if ON_RENDER else "True").lower() in (
 
 # Allow all hosts on Render (ALLOWED_HOSTS is enforced by Render's TLS proxy anyway)
 RENDER_EXTERNAL_HOSTNAME = os.environ.get("RENDER_EXTERNAL_HOSTNAME")
-ALLOWED_HOSTS = ["localhost", "127.0.0.1"]
+ALLOWED_HOSTS = [
+    "localhost",
+    "127.0.0.1",
+    "audio-forgery-detection-backend.onrender.com",
+]
 if RENDER_EXTERNAL_HOSTNAME:
     ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
-# Allow * in dev or if not restricted
+# Allow * in dev
 if not ON_RENDER or DEBUG:
     ALLOWED_HOSTS = ["*"]
 
@@ -115,18 +119,20 @@ MEDIA_ROOT = BASE_DIR / "media"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # ── CORS ──────────────────────────────────────────────────────────────────────
-# Allow all origins in development; on Render add the actual deployed frontend URL
+# Hardcode both the local dev origin and the actual Render frontend
 _cors_origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
+    # Actual deployed frontend
+    "https://audio-forgery-detection-frontend.onrender.com",
 ]
 
-# Add Render frontend URL from env var (set this in Render dashboard)
+# Also support FRONTEND_URL env var for flexibility
 FRONTEND_URL = os.getenv("FRONTEND_URL", "")
-if FRONTEND_URL:
+if FRONTEND_URL and FRONTEND_URL.rstrip("/") not in _cors_origins:
     _cors_origins.append(FRONTEND_URL.rstrip("/"))
 
-# In development allow all
+# In development allow all origins
 if not ON_RENDER:
     CORS_ALLOW_ALL_ORIGINS = True
 else:
@@ -158,4 +164,4 @@ REST_FRAMEWORK = {
 ML_CONFIG_PATH = os.getenv("ML_CONFIG_PATH", str(PROJECT_ROOT / "model2_resnet/configs/config.yaml"))
 
 # HuggingFace Hub repo for model downloads (used by build.sh)
-HF_REPO_ID = os.getenv("HF_REPO_ID", "Hkm2003/audio-forgery-models")
+HF_REPO_ID = os.getenv("HF_REPO_ID", "Hkm2003/audio-forgery-models-bucket")

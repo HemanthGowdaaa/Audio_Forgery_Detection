@@ -1,9 +1,9 @@
 # =============================================================================
 # render.yaml — Render Blueprint for Audio Forgery Detection
 # =============================================================================
-# This file defines both services. Run:
-#   render blueprint launch
-# from the repo root to deploy both services in one shot.
+# Services match the already-deployed Render service names:
+#   Backend : https://audio-forgery-detection-backend.onrender.com
+#   Frontend: https://audio-forgery-detection-frontend.onrender.com
 # =============================================================================
 
 services:
@@ -11,13 +11,13 @@ services:
   # Service 1: Django Backend Web Service
   # ─────────────────────────────────────────────────────────────────────────
   - type: web
-    name: audio-forgery-api
+    name: audio-forgery-detection-backend
     runtime: python
     region: oregon
-    plan: starter         # 2 GB RAM — required for the 1.6 GB ResNet model
+    plan: starter         # 2 GB RAM — required to load both ML models
     rootDir: django_backend
     buildCommand: "./build.sh"
-    startCommand: "gunicorn audio_forgery_project.wsgi:application --bind 0.0.0.0:$PORT --workers 1 --timeout 120"
+    startCommand: "gunicorn audio_forgery_project.wsgi:application --bind 0.0.0.0:$PORT --workers 1 --timeout 180 --preload"
     healthCheckPath: /health
     envVars:
       - key: PYTHON_VERSION
@@ -27,23 +27,23 @@ services:
       - key: DJANGO_DEBUG
         value: "False"
       - key: DJANGO_SECRET_KEY
-        generateValue: true       # Render auto-generates a secure random value
+        generateValue: true
       - key: HF_REPO_ID
-        value: Hkm2003/audio-forgery-models
+        value: Hkm2003/audio-forgery-models-bucket
       - key: FRONTEND_URL
-        value: https://audio-forgery-ui.onrender.com   # Update after frontend deploys
+        value: https://audio-forgery-detection-frontend.onrender.com
 
   # ─────────────────────────────────────────────────────────────────────────
   # Service 2: React / Vite Static Site (Frontend)
   # ─────────────────────────────────────────────────────────────────────────
   - type: web
-    name: audio-forgery-ui
+    name: audio-forgery-detection-frontend
     runtime: static
     region: oregon
     rootDir: frontend
     buildCommand: "npm install && npm run build"
     staticPublishPath: ./dist
-    pullRequestPreviewsEnabled: true
+    pullRequestPreviewsEnabled: false
     headers:
       - path: /*
         name: Cache-Control
@@ -57,6 +57,6 @@ services:
         destination: /index.html   # SPA catch-all for React Router
     envVars:
       - key: VITE_API_BASE_URL
-        value: https://audio-forgery-api.onrender.com
+        value: https://audio-forgery-detection-backend.onrender.com
       - key: NODE_VERSION
         value: 20.11.0

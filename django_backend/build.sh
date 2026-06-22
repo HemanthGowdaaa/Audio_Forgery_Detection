@@ -2,11 +2,10 @@
 # =============================================================================
 # build.sh — Render Build Script for Audio Forgery Detection Django Backend
 # =============================================================================
-# This script runs during the Render build phase (before the server starts).
-# It handles:
-#   1. Installing all Python dependencies
-#   2. Downloading trained ML model files from Hugging Face Hub
-#   3. Running Django management commands (collectstatic, migrate)
+# Runs during the Render build phase (before the server starts).
+#   1. Install Python dependencies
+#   2. Download trained ML models from Hugging Face Hub (Hkm2003/audio-forgery-models-bucket)
+#   3. Run Django collectstatic + migrate
 # =============================================================================
 
 set -o errexit   # Exit immediately on any error
@@ -25,12 +24,12 @@ pip install -r requirements.txt
 echo ""
 echo "🤖 Downloading model files from Hugging Face Hub..."
 
-# The HF_REPO_ID env var must be set in Render dashboard
-# e.g. HemanthGowdaaa/audio-forgery-models
-HF_REPO="${HF_REPO_ID:-Hkm2003/audio-forgery-models}"
+# The HF_REPO_ID env var is set in render.yaml / Render dashboard
+HF_REPO="${HF_REPO_ID:-Hkm2003/audio-forgery-models-bucket}"
 
 # Resolve the project root (one level up from django_backend/)
-PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 MODEL_DIR="${PROJECT_ROOT}/outputs/best_model"
 METRICS_DIR="${PROJECT_ROOT}/outputs"
 
@@ -41,56 +40,60 @@ mkdir -p "${MODEL_DIR}"
 mkdir -p "${METRICS_DIR}"
 
 # Download each file using huggingface_hub Python API
-python3 - <<'PYEOF'
+HF_REPO="${HF_REPO}" PROJECT_ROOT="${PROJECT_ROOT}" python3 - <<'PYEOF'
 import os
 import sys
 from pathlib import Path
 from huggingface_hub import hf_hub_download
 
-HF_REPO = os.environ.get("HF_REPO_ID", "Hkm2003/audio-forgery-models")
-
-# Resolve directories relative to the project root (parent of django_backend)
-SCRIPT_DIR = Path(__file__).resolve().parent
-PROJECT_ROOT = SCRIPT_DIR.parent
-MODEL_DIR = PROJECT_ROOT / "outputs" / "best_model"
-METRICS_DIR = PROJECT_ROOT / "outputs"
+HF_REPO    = os.environ["HF_REPO"]
+MODEL_DIR  = Path(os.environ["PROJECT_ROOT"]) / "outputs" / "best_model"
+METRICS_DIR = Path(os.environ["PROJECT_ROOT"]) / "outputs"
 
 MODEL_DIR.mkdir(parents=True, exist_ok=True)
 METRICS_DIR.mkdir(parents=True, exist_ok=True)
 
-# Files to download from HuggingFace repo
+# Files to download: (filename_in_hf_repo, local_destination)
 downloads = [
-    # (filename_in_hf_repo, local_destination)
-    ("best_model/best_resnet.pth",     MODEL_DIR / "best_resnet.pth"),
-    ("best_model/best_svm.joblib",     MODEL_DIR / "best_svm.joblib"),
-    ("best_model/metadata.json",       MODEL_DIR / "metadata.json"),
-    ("svm_metrics.json",               METRICS_DIR / "svm_metrics.json"),
-    ("resnet_metrics.json",            METRICS_DIR / "resnet_metrics.json"),
-    ("model_comparison.json",          METRICS_DIR / "model_comparison.json"),
+    ("best_model/best_resnet.pth",   MODEL_DIR  / "best_resnet.pth"),
+    ("best_model/best_svm.joblib",   MODEL_DIR  / "best_svm.joblib"),
+    ("best_model/metadata.json",     MODEL_DIR  / "metadata.json"),
+    ("svm_metrics.json",             METRICS_DIR / "svm_metrics.json"),
+    ("resnet_metrics.json",          METRICS_DIR / "resnet_metrics.json"),
+    ("model_comparison.json",        METRICS_DIR / "model_comparison.json"),
 ]
 
+all_ok = True
 for hf_filename, local_path in downloads:
     if local_path.exists():
-        print(f"   ✅ Already exists: {local_path.name}")
+        print(f"   ✅ Already exists: {local_path.name}", flush=True)
         continue
     try:
         print(f"   ⬇️  Downloading: {hf_filename} ...", flush=True)
-        cached = hf_hub_download(
+        hf_hub_download(
             repo_id=HF_REPO,
             filename=hf_filename,
             local_dir=str(local_path.parent),
             local_dir_use_symlinks=False,
         )
-        # hf_hub_download downloads to local_dir with the filename preserved
-        downloaded = Path(local_path.parent) / Path(hf_filename).name
-        if downloaded != local_path and downloaded.exists():
+        # The file lands at local_path.parent / basename(hf_filename)
+        downloaded = local_path.parent / Path(hf_filename).name
+        if downloaded.exists() and downloaded != local_path:
             downloaded.rename(local_path)
-        print(f"   ✅ Saved: {local_path}", flush=True)
+        if local_path.exists():
+            size_mb = local_path.stat().st_size / 1_048_576
+            print(f"   ✅ Saved: {local_path.name} ({size_mb:.1f} MB)", flush=True)
+        else:
+            print(f"   ⚠️  File not found after download: {local_path}", file=sys.stderr)
+            all_ok = False
     except Exception as e:
         print(f"   ⚠️  WARNING: Could not download {hf_filename}: {e}", file=sys.stderr)
-        print(f"   ℹ️  Backend will start with fallback/default metrics if model files are missing.", file=sys.stderr)
+        all_ok = False
 
-print("   ✅ Model download phase complete.", flush=True)
+if all_ok:
+    print("   ✅ All model files downloaded successfully.", flush=True)
+else:
+    print("   ⚠️  Some model files are missing — server will start with fallback metrics.", file=sys.stderr)
 PYEOF
 
 # ── 3. Django management commands ───────────────────────────────────────────

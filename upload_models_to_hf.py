@@ -15,7 +15,7 @@ import os
 from pathlib import Path
 from huggingface_hub import HfApi, create_repo
 
-REPO_ID   = "Hkm2003/audio-forgery-models"
+REPO_ID   = "Hkm2003/audio-forgery-models-bucket"
 REPO_TYPE = "model"
 
 # Files to upload: (local_path, path_in_repo)
