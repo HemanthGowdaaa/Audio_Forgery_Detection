@@ -15,7 +15,7 @@ services:
     runtime: python
     region: oregon
     plan: starter         # 2 GB RAM — required to load both ML models
-    rootDir: django_backend
+    rootDir: backend
 
     # build.sh: installs deps, downloads models from HF Hub, runs collectstatic
     buildCommand: "chmod +x ./build.sh && ./build.sh"

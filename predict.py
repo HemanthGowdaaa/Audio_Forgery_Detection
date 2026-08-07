@@ -82,7 +82,7 @@ def _print_metrics(metrics: dict[str, Any]) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Audio deepfake inference")
     parser.add_argument("path", help="Audio file or folder")
-    parser.add_argument("--config", default="model2_resnet/configs/config.yaml")
+    parser.add_argument("--config", default="models/model2_resnet/configs/config.yaml")
     args = parser.parse_args()
 
     cfg = load_config(args.config)

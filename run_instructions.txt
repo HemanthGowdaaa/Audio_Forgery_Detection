@@ -52,7 +52,7 @@ Upgrade pip first:
   pip install --upgrade pip
 
 Install all project dependencies (covers both models + backend):
-  pip install -r model2_resnet/requirements.txt
+  pip install -r models/model2_resnet/requirements.txt
   pip install -r backend/requirements.txt
 
 Also install psutil for RAM monitoring during training (optional but helpful):
@@ -118,7 +118,7 @@ Estimated time: 15–40 minutes depending on dataset size.
 The ResNet++ model uses a dedicated optimized training script.
 Run from the project root:
 
-  cd model2_resnet
+  cd models/model2_resnet
   python3 train.py --config configs/config.yaml
   cd ..
 
@@ -132,8 +132,8 @@ Key settings (already configured in configs/config.yaml):
 This will:
   • Load audio lazily from train_manifest.csv (no HuggingFace download needed)
   • Cache preprocessed spectrograms to ./cache/spectrograms/
-  • Save best checkpoint to: model2_resnet/outputs/resnet_checkpoints/best_model.pth
-  • Save metrics to:          model2_resnet/outputs/best_val_metrics.json
+  • Save best checkpoint to: models/model2_resnet/outputs/resnet_checkpoints/best_model.pth
+  • Save metrics to:          models/model2_resnet/outputs/best_val_metrics.json
 
 Estimated time (MacBook Air M2):
   • First epoch (cache cold): ~25–35 minutes
@@ -162,7 +162,7 @@ This will:
 
 Optional flags:
   python3 train_pipeline.py --skip-resnet    # SVM only (fast, 15–40 min)
-  python3 train_pipeline.py --config model2_resnet/configs/config.yaml
+  python3 train_pipeline.py --config models/model2_resnet/configs/config.yaml
 
 
 ════════════════════════════════════════════════════════════════════
@@ -173,7 +173,7 @@ After ResNet++ training, copy the best checkpoint to the location
 the backend expects:
 
   mkdir -p outputs/best_model
-  cp model2_resnet/outputs/resnet_checkpoints/best_model.pth outputs/best_model/best_resnet.pth
+  cp models/model2_resnet/outputs/resnet_checkpoints/best_model.pth outputs/best_model/best_resnet.pth
 
 If you also trained via train_pipeline.py (Step 4C), this is done automatically.
 
@@ -186,9 +186,9 @@ Open a NEW terminal window/tab. Activate the virtual environment:
 
   source venv/bin/activate          # macOS/Linux
 
-Navigate to the django_backend/ directory and start the server:
+Navigate to the backend/ directory and start the server:
 
-  cd django_backend
+  cd backend
   python3 manage.py runserver 127.0.0.1:8000 --noreload
 
 Expected startup output:
@@ -259,7 +259,7 @@ Terminal 1 — Train SVM only (fast baseline):
 Terminal 2 — Train ResNet++ (M2-optimized, run after Terminal 1):
 ──────────────────────────────────────────────────────────────────
   source venv/bin/activate
-  cd model2_resnet
+  cd models/model2_resnet
   python3 train.py --config configs/config.yaml
   cd ..
   mkdir -p outputs/best_model
@@ -296,7 +296,7 @@ Terminal 4 — Frontend dev server:
   └── resnet_checkpoints/
       └── best_model.pth            # ResNet++ training checkpoint
 
-  model2_resnet/
+  models/model2_resnet/
   └── cache/spectrograms/           # Disk-cached mel spectrograms
                                     # (delete to force reprocessing)
 
@@ -317,7 +317,7 @@ Solution: The optimized dataset_manifest.py uses soundfile automatically.
 Problem: "MPS backend out of memory" / OOM errors
 Solution: Already handled — train.py uses CPU autocast fallback.
   export PYTORCH_ENABLE_MPS_FALLBACK=1
-  python3 model2_resnet/train.py
+  python3 models/model2_resnet/train.py
 
 Problem: Frontend shows "Cannot connect to backend"
 Solution: Make sure the backend is running in a separate terminal at port 8000.
@@ -334,4 +334,4 @@ Solution: Cache kicks in after the first epoch. Second epoch is ~3× faster.
 
 Problem: "best_resnet.pth not found" in backend
 Solution: Copy checkpoint manually:
-  cp model2_resnet/outputs/resnet_checkpoints/best_model.pth outputs/best_model/best_resnet.pth
+  cp models/model2_resnet/outputs/resnet_checkpoints/best_model.pth outputs/best_model/best_resnet.pth

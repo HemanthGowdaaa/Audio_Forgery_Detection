@@ -58,7 +58,7 @@ def _deploy_best(best: str, resnet: dict, svm: dict, cfg: dict) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Complete local audio deepfake detection pipeline")
-    parser.add_argument("--config", default="model2_resnet/configs/config.yaml")
+    parser.add_argument("--config", default="models/model2_resnet/configs/config.yaml")
     parser.add_argument("--skip-resnet", action="store_true", help="Only useful for quick SVM checks")
     args = parser.parse_args()
 

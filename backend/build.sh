@@ -2,8 +2,8 @@
 # =============================================================================
 # build.sh — Render Build Script for Audio Forgery Detection Django Backend
 # =============================================================================
-# rootDir in render.yaml is "django_backend", so this script runs FROM
-# inside the django_backend/ directory. PROJECT_ROOT is one level up.
+# rootDir in render.yaml is "backend", so this script runs FROM
+# inside the backend/ directory. PROJECT_ROOT is one level up.
 # =============================================================================
 
 set -o errexit   # Exit immediately on any error
@@ -22,9 +22,9 @@ pip install --upgrade pip
 pip install -r requirements.txt
 
 # ── 2. Resolve paths ─────────────────────────────────────────────────────────
-# When render.yaml sets rootDir: django_backend, Render sets CWD to
-# /opt/render/project/src/django_backend  (build.sh runs from here)
-DJANGO_DIR="$(pwd)"                          # /opt/render/project/src/django_backend
+# When render.yaml sets rootDir: backend, Render sets CWD to
+# /opt/render/project/src/backend  (build.sh runs from here)
+DJANGO_DIR="$(pwd)"                          # /opt/render/project/src/backend
 PROJECT_ROOT="$(cd "${DJANGO_DIR}/.." && pwd)" # /opt/render/project/src
 
 MODEL_DIR="${PROJECT_ROOT}/outputs/best_model"
@@ -106,7 +106,7 @@ echo "🗄️  Running Django management commands..."
 # Ensure staticfiles directory exists before collectstatic
 mkdir -p staticfiles
 
-# Run from django_backend (CWD is already django_backend on Render)
+# Run from backend (CWD is already backend on Render)
 python3 manage.py collectstatic --no-input
 python3 manage.py migrate --no-input
 

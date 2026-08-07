@@ -1,11 +1,36 @@
-django>=4.2
+# ===================================================================
+# Production Requirements for Audio Forgery Detection (Render/Linux)
+# ===================================================================
+# This file is used by build.sh on Render's Linux x86_64 environment.
+# Pinned to specific versions that are confirmed available on PyPI
+# for linux_x86_64. DO NOT use pip freeze from macOS/ARM directly.
+# ===================================================================
+
+# ── Web server ───────────────────────────────────────────────────────
+gunicorn>=21.2.0
+whitenoise>=6.7.0
+
+# ── Django core ──────────────────────────────────────────────────────
+Django>=4.2,<6.0
 djangorestframework>=3.14
 django-cors-headers>=4.0
 python-multipart>=0.0.9
+
+# ── ML / Audio ────────────────────────────────────────────────────────
+# torch CPU-only for Render (no GPU, saves ~1GB of download vs CUDA)
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.2.2
+torchaudio==2.2.2
+
 joblib>=1.3.0
 scikit-learn>=1.4.0
 librosa>=0.10.1
 soundfile>=0.12.1
-torch>=2.2.0
-torchaudio>=2.2.0
+numpy>=1.26.0,<3.0
+scipy>=1.11.0
+
+# ── Model hosting ─────────────────────────────────────────────────────
+huggingface_hub>=0.23.0
+
+# ── Config / Utilities ────────────────────────────────────────────────
 pyyaml>=6.0.1
